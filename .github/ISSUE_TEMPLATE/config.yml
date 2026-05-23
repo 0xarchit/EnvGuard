@@ -1,0 +1,7 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/0xarchit/EnvGuard/security/advisories/new
+    about: >
+      Do not open a public issue for security vulnerabilities.
+      Please use GitHub's private security advisory system instead.
