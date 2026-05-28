@@ -5,7 +5,7 @@ use argon2::{Argon2, Params, Algorithm, Version};
 use hkdf::Hkdf;
 use sha2::Sha256;
 use zeroize::Zeroizing;
-use crate::credential_controller::errors::CryptoError;
+use crate::env_guard::errors::CryptoError;
 
 pub fn generate_vault_salt() -> [u8; 16] {
     let mut salt = [0u8; 16];
