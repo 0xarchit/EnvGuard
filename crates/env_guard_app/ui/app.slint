@@ -1,14 +1,753 @@
+export global Palette {
+    in-out property <bool> dark-mode: true;
+    out property <color> bg-base:     dark-mode ? #0D0F1A : #F4F5F8;
+    out property <color> bg-surface:  dark-mode ? #13162B : #FFFFFF;
+    out property <color> bg-elevated: dark-mode ? #1A1E35 : #ECEEF5;
+    out property <color> bg-overlay:  dark-mode ? #21263F : #FFFFFF;
+    out property <color> text-primary:   dark-mode ? #E6E8F2 : #1A1E35;
+    out property <color> text-secondary: dark-mode ? #8B90B0 : #5A5F7D;
+    out property <color> text-muted:     dark-mode ? #4A5070 : #9095B0;
+    out property <color> text-inverse:   dark-mode ? #0D0F1A : #F4F5F8;
+    out property <color> accent:        dark-mode ? #6366F1 : #4F52E0;
+    out property <color> accent-hover:  dark-mode ? #818CF8 : #6366F1;
+    out property <color> accent-subtle: dark-mode ? #1E213F : #ECEEF8;
+    out property <color> accent-border: dark-mode ? #3D4280 : #A5A8F0;
+    out property <color> success:        dark-mode ? #22C55E : #16A34A;
+    out property <color> success-subtle: dark-mode ? #0F2A1A : #DCFCE7;
+    out property <color> warning:        dark-mode ? #F59E0B : #D97706;
+    out property <color> warning-subtle: dark-mode ? #2A1F08 : #FEF3C7;
+    out property <color> danger:         dark-mode ? #EF4444 : #DC2626;
+    out property <color> danger-subtle:  dark-mode ? #2A0F0F : #FEE2E2;
+    out property <color> info:           dark-mode ? #3B82F6 : #2563EB;
+    out property <color> info-subtle:    dark-mode ? #0F1A2A : #DBEAFE;
+    out property <color> border-subtle:  dark-mode ? #1E2238 : #E2E4EE;
+    out property <color> border-default: dark-mode ? #2A2F50 : #C8CCDF;
+    out property <color> border-strong:  dark-mode ? #6366F1 : #4F52E0;
+    out property <color> sidebar-bg:          dark-mode ? #0B0D17 : #ECEEF5;
+    out property <color> sidebar-item-hover:  dark-mode ? #1A1E35 : #DDDFF0;
+    out property <color> sidebar-item-active: dark-mode ? #1E213F : #D4D7F5;
+}
+
+export global Typography {
+    out property <length> size-xs:   11px;
+    out property <length> size-sm:   12px;
+    out property <length> size-base: 13px;
+    out property <length> size-md:   14px;
+    out property <length> size-lg:   16px;
+    out property <length> size-xl:   20px;
+    out property <length> size-2xl:  24px;
+    out property <length> size-3xl:  30px;
+    out property <int> weight-regular: 400;
+    out property <int> weight-medium:  500;
+    out property <int> weight-semibold: 600;
+    out property <int> weight-bold:    700;
+    out property <length> tracking-tight:  -0.3px;
+    out property <length> tracking-normal: 0px;
+    out property <length> tracking-wide:   0.4px;
+}
+
+export global Tokens {
+    out property <length> space-1:  4px;
+    out property <length> space-2:  8px;
+    out property <length> space-3:  12px;
+    out property <length> space-4:  16px;
+    out property <length> space-5:  20px;
+    out property <length> space-6:  24px;
+    out property <length> space-8:  32px;
+    out property <length> space-10: 40px;
+    out property <length> space-12: 48px;
+    out property <length> space-16: 64px;
+    out property <length> radius-sm: 4px;
+    out property <length> radius-md: 8px;
+    out property <length> radius-lg: 12px;
+    out property <length> radius-xl: 16px;
+    out property <length> radius-full: 999px;
+    out property <length> sidebar-width:          240px;
+    out property <length> sidebar-collapsed-width: 60px;
+    out property <length> detail-panel-width: 320px;
+    out property <length> row-height-sm:  32px;
+    out property <length> row-height-md:  44px;
+    out property <length> row-height-lg:  56px;
+    out property <duration> duration-fast:   120ms;
+    out property <duration> duration-base:   200ms;
+    out property <duration> duration-slow:   300ms;
+    out property <duration> duration-xslow:  450ms;
+}
+
+component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <bool>   enabled: true;
+    in property <bool>   loading: false;
+    callback clicked;
+    min-width: 80px;
+    height: 36px;
+    background: enabled ? Palette.accent : Palette.bg-elevated;
+    border-radius: Tokens.radius-md;
+    opacity: enabled ? 1.0 : 0.45;
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: root.loading ? "..." : root.text;
+        font-size: Typography.size-base;
+        font-weight: Typography.weight-semibold;
+        color: Palette.text-inverse;
+    }
+    touch := TouchArea {
+        enabled: root.enabled && !root.loading;
+        clicked => { root.clicked(); }
+    }
+}
+
+component SecondaryButton inherits Rectangle {
+    in property <string> text;
+    in property <bool>   enabled: true;
+    callback clicked;
+    min-width: 80px;
+    height: 36px;
+    background: Palette.bg-surface;
+    border-color: Palette.border-default;
+    border-width: 1px;
+    border-radius: Tokens.radius-md;
+    opacity: enabled ? 1.0 : 0.45;
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: root.text;
+        font-size: Typography.size-base;
+        font-weight: Typography.weight-medium;
+        color: Palette.text-primary;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+component DangerButton inherits Rectangle {
+    in property <string> text;
+    in property <bool>   enabled: true;
+    callback clicked;
+    min-width: 80px;
+    height: 36px;
+    background: Palette.danger;
+    border-radius: Tokens.radius-md;
+    opacity: enabled ? 1.0 : 0.45;
+    Text {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: root.text;
+        font-size: Typography.size-base;
+        font-weight: Typography.weight-semibold;
+        color: #FFFFFF;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+
+component InputField {
+    in property <string>  label;
+    in property <string>  placeholder;
+    in-out property <string> value;
+    in property <bool>    enabled: true;
+    in property <string>  error-text: "";
+    callback edited(string);
+    height: 72px;
+    VerticalLayout {
+        spacing: Tokens.space-1;
+        if label != "": Text {
+            text: root.label;
+            font-size: Typography.size-sm;
+            font-weight: Typography.weight-medium;
+            color: Palette.text-secondary;
+        }
+        field-box := Rectangle {
+            height: 36px;
+            background: Palette.bg-elevated;
+            border-radius: Tokens.radius-sm;
+            border-width: 1px;
+            border-color: error-text != "" ? Palette.danger : Palette.border-default;
+            inner := TextInput {
+                x: Tokens.space-3;
+                y: 0;
+                width: parent.width - Tokens.space-6;
+                height: parent.height;
+                text <=> root.value;
+                font-size: Typography.size-base;
+                color: Palette.text-primary;
+                enabled: root.enabled;
+                edited => { root.edited(self.text); }
+            }
+        }
+        if error-text != "": Text {
+            text: root.error-text;
+            font-size: Typography.size-xs;
+            color: Palette.danger;
+        }
+    }
+}
+
+component PasswordField {
+    in property <string>  label;
+    in property <string>  placeholder;
+    in-out property <string> value;
+    in property <bool>    enabled: true;
+    in property <string>  error-text: "";
+    callback edited(string);
+    in-out property <bool> visible-text: false;
+    height: 72px;
+    VerticalLayout {
+        spacing: Tokens.space-1;
+        if label != "": Text {
+            text: root.label;
+            font-size: Typography.size-sm;
+            font-weight: Typography.weight-medium;
+            color: Palette.text-secondary;
+        }
+        Rectangle {
+            height: 36px;
+            background: Palette.bg-elevated;
+            border-radius: Tokens.radius-sm;
+            border-width: 1px;
+            border-color: error-text != "" ? Palette.danger : Palette.border-default;
+            inner := TextInput {
+                x: Tokens.space-3;
+                y: 0;
+                width: parent.width - 48px;
+                height: parent.height;
+                text <=> root.value;
+                input-type: visible-text ? InputType.text : InputType.password;
+                font-size: Typography.size-base;
+                color: Palette.text-primary;
+                enabled: root.enabled;
+                edited => { root.edited(self.text); }
+            }
+            Rectangle {
+                x: parent.width - 36px;
+                y: (parent.height - 20px) / 2;
+                width: 20px;
+                height: 20px;
+                border-radius: Tokens.radius-sm;
+                Text {
+                    text: visible-text ? "◉" : "○";
+                    font-size: 14px;
+                    color: Palette.text-muted;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                }
+                TouchArea {
+                    clicked => { visible-text = !visible-text; }
+                }
+            }
+        }
+        if error-text != "": Text {
+            text: root.error-text;
+            font-size: Typography.size-xs;
+            color: Palette.danger;
+        }
+    }
+}
+
+export struct ProfileUiData {
+    id: string,
+    name: string,
+    description: string,
+    credential-count: int,
+    is-active: bool,
+    session-count: int,
+}
+
+export struct CredentialUiData {
+    id: string,
+    key: string,
+    value-revealed: bool,
+    value-plaintext: string,
+}
+
+export struct SessionUiData {
+    id: string,
+    profile-name: string,
+    shell: string,
+    started-at: string,
+    expires-at: string,
+    pid: int,
+    status: string,
+}
+
+component Sidebar inherits Rectangle {
+    in property <int> active-item: 0;
+    in property <int> active-session-count: 0;
+    callback navigate(int);
+    callback lock-vault;
+    width: Tokens.sidebar-width;
+    background: Palette.sidebar-bg;
+    VerticalLayout {
+        padding: Tokens.space-4;
+        spacing: Tokens.space-2;
+        alignment: start;
+        Text {
+            text: "EnvGuard";
+            font-size: Typography.size-lg;
+            font-weight: Typography.weight-bold;
+            color: Palette.text-primary;
+            height: 48px;
+        }
+        Rectangle { height: 1px; background: Palette.border-subtle; }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(0); }
+            Rectangle {
+                background: active-item == 0 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: "Profiles";
+                    font-size: Typography.size-base;
+                    color: active-item == 0 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(1); }
+            Rectangle {
+                background: active-item == 1 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: "Active Sessions (" + active-session-count + ")";
+                    font-size: Typography.size-base;
+                    color: active-item == 1 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(2); }
+            Rectangle {
+                background: active-item == 2 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: ".env Scanner";
+                    font-size: Typography.size-base;
+                    color: active-item == 2 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(3); }
+            Rectangle {
+                background: active-item == 3 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: "Settings";
+                    font-size: Typography.size-base;
+                    color: active-item == 3 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        PrimaryButton {
+            text: "Lock Vault";
+            clicked => { root.lock-vault(); }
+        }
+    }
+}
+
+component UnlockView inherits Rectangle {
+    in property <string> error-text: "";
+    in-out property <string> password: "";
+    callback unlock(string);
+    background: Palette.bg-base;
+    VerticalLayout {
+        alignment: center;
+        spacing: Tokens.space-4;
+        width: 320px;
+        x: (parent.width - self.width) / 2;
+        Text {
+            text: "Unlock Vault";
+            font-size: Typography.size-2xl;
+            font-weight: Typography.weight-bold;
+            color: Palette.text-primary;
+            horizontal-alignment: center;
+        }
+        pw := PasswordField {
+            label: "Master Password";
+            placeholder: "Enter password";
+            value <=> root.password;
+            error-text: root.error-text;
+        }
+        PrimaryButton {
+            text: "Unlock";
+            clicked => { root.unlock(root.password); }
+        }
+    }
+}
+
+component ProfileCard inherits Rectangle {
+    in property <ProfileUiData> profile;
+    callback clicked;
+    callback start-session;
+    height: 140px;
+    background: Palette.bg-surface;
+    border-radius: Tokens.radius-lg;
+    border-width: 1px;
+    border-color: profile.is-active ? Palette.accent-border : Palette.border-subtle;
+    VerticalLayout {
+        padding: Tokens.space-4;
+        spacing: Tokens.space-2;
+        HorizontalLayout {
+            alignment: space-between;
+            Text {
+                text: profile.name;
+                font-size: Typography.size-md;
+                font-weight: Typography.weight-semibold;
+                color: Palette.text-primary;
+                overflow: elide;
+                max-width: 140px;
+            }
+            if profile.is-active: Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: Tokens.radius-full;
+                background: Palette.success;
+                y: 4px;
+            }
+        }
+        if profile.description != "": Text {
+            text: profile.description;
+            font-size: Typography.size-sm;
+            color: Palette.text-secondary;
+            overflow: elide;
+            wrap: word-wrap;
+            max-height: 32px;
+        }
+        Rectangle { height: 1px; background: Palette.border-subtle; }
+        HorizontalLayout {
+            alignment: space-between;
+            Text {
+                text: profile.credential-count + " credentials";
+                font-size: Typography.size-xs;
+                color: Palette.text-muted;
+            }
+            PrimaryButton {
+                text: "Start";
+                clicked => { root.start-session(); }
+                height: 24px;
+                min-width: 48px;
+            }
+        }
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "EnvGuard";
     min-width: 900px;
     min-height: 600px;
     preferred-width: 1100px;
     preferred-height: 720px;
+    background: Palette.bg-base;
+    in-out property <int> active-nav: 0;
     in-out property <bool> vault-locked: true;
     in-out property <string> error-message: "";
+    in-out property <int> active-session-count: 0;
+    in-out property <[ProfileUiData]> profiles: [];
+    in-out property <[CredentialUiData]> credentials: [];
+    in-out property <[SessionUiData]> active-sessions: [];
+    in-out property <[string]> scanned-env-files: [];
+    in-out property <string> selected-profile-id: "";
+    in-out property <string> selected-profile-name: "";
+    in-out property <string> new-profile-name: "";
+    in-out property <string> new-profile-desc: "";
+    in-out property <string> new-cred-key: "";
+    in-out property <string> new-cred-val: "";
+    in-out property <string> scan-directory: "";
+
     callback unlock(string);
-    Text {
-        text: "EnvGuard Bootstrap UI";
-        font-size: 24px;
+    callback lock-vault;
+    callback create-profile(string, string);
+    callback select-profile(string);
+    callback delete-profile(string);
+    callback add-credential(string, string, string);
+    callback delete-credential(string);
+    callback start-session(string);
+    callback stop-session(string);
+    callback scan-env-files(string);
+
+    if vault-locked: UnlockView {
+        error-text: root.error-message;
+        unlock(pw) => { root.unlock(pw); }
+    }
+    if !vault-locked: HorizontalLayout {
+        Sidebar {
+            active-item: root.active-nav;
+            active-session-count: root.active-session-count;
+            navigate(item) => {
+                root.active-nav = item;
+                root.selected-profile-id = "";
+            }
+            lock-vault => { root.lock-vault(); }
+        }
+        Rectangle { width: 1px; background: Palette.border-subtle; }
+        Rectangle {
+            background: Palette.bg-base;
+            horizontal-stretch: 1;
+            if active-nav == 0 && selected-profile-id == "": VerticalLayout {
+                padding: Tokens.space-6;
+                spacing: Tokens.space-4;
+                alignment: start;
+                HorizontalLayout {
+                    alignment: space-between;
+                    Text {
+                        text: "Project Profiles";
+                        font-size: Typography.size-2xl;
+                        font-weight: Typography.weight-bold;
+                        color: Palette.text-primary;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Tokens.space-3;
+                    InputField {
+                        placeholder: "Profile name";
+                        value <=> root.new-profile-name;
+                        width: 200px;
+                    }
+                    InputField {
+                        placeholder: "Description";
+                        value <=> root.new-profile-desc;
+                        width: 300px;
+                    }
+                    PrimaryButton {
+                        text: "Create Profile";
+                        clicked => {
+                            root.create-profile(root.new-profile-name, root.new-profile-desc);
+                            root.new-profile-name = "";
+                            root.new-profile-desc = "";
+                        }
+                        y: 28px;
+                    }
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                if profiles.length == 0: Text {
+                    text: "No profiles created yet. Use the form above to add one.";
+                    font-size: Typography.size-base;
+                    color: Palette.text-secondary;
+                }
+                VerticalLayout {
+                    spacing: Tokens.space-4;
+                    for p in profiles: ProfileCard {
+                        profile: p;
+                        clicked => {
+                            root.selected-profile-id = p.id;
+                            root.selected-profile-name = p.name;
+                            root.select-profile(p.id);
+                        }
+                        start-session => {
+                            root.start-session(p.id);
+                        }
+                    }
+                }
+
+            }
+            if active-nav == 0 && selected-profile-id != "": VerticalLayout {
+                padding: Tokens.space-6;
+                spacing: Tokens.space-4;
+                alignment: start;
+                HorizontalLayout {
+                    spacing: Tokens.space-4;
+                    SecondaryButton {
+                        text: "<- Back";
+                        clicked => { root.selected-profile-id = ""; }
+                    }
+                    Text {
+                        text: "Profile: " + root.selected-profile-name;
+                        font-size: Typography.size-2xl;
+                        font-weight: Typography.weight-bold;
+                        color: Palette.text-primary;
+                    }
+                    DangerButton {
+                        text: "Delete Profile";
+                        clicked => {
+                            root.delete-profile(root.selected-profile-id);
+                            root.selected-profile-id = "";
+                        }
+                    }
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                HorizontalLayout {
+                    spacing: Tokens.space-3;
+                    InputField {
+                        placeholder: "Key (e.g. API_KEY)";
+                        value <=> root.new-cred-key;
+                        width: 200px;
+                    }
+                    InputField {
+                        placeholder: "Value";
+                        value <=> root.new-cred-val;
+                        width: 300px;
+                    }
+                    PrimaryButton {
+                        text: "Add Credential";
+                        clicked => {
+                            root.add-credential(root.selected-profile-id, root.new-cred-key, root.new-cred-val);
+                            root.new-cred-key = "";
+                            root.new-cred-val = "";
+                        }
+                        y: 28px;
+                    }
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                if credentials.length == 0: Text {
+                    text: "No credentials in this profile yet. Add one above.";
+                    font-size: Typography.size-base;
+                    color: Palette.text-secondary;
+                }
+                for c in credentials: HorizontalLayout {
+                    height: 48px;
+                    alignment: start;
+                    spacing: Tokens.space-4;
+                    Text {
+                        text: c.key;
+                        font-size: Typography.size-base;
+                        font-weight: Typography.weight-bold;
+                        color: Palette.text-primary;
+                        width: 200px;
+                    }
+                    Text {
+                        text: c.value-revealed ? c.value-plaintext : "••••••••••••";
+                        font-size: Typography.size-base;
+                        color: Palette.text-secondary;
+                        width: 300px;
+                    }
+                    DangerButton {
+                        text: "Delete";
+                        clicked => { root.delete-credential(c.id); }
+                        height: 28px;
+                    }
+                }
+            }
+            if active-nav == 1: VerticalLayout {
+                padding: Tokens.space-6;
+                spacing: Tokens.space-4;
+                alignment: start;
+                Text {
+                    text: "Active Runtime Sessions";
+                    font-size: Typography.size-2xl;
+                    font-weight: Typography.weight-bold;
+                    color: Palette.text-primary;
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                if active-sessions.length == 0: Text {
+                    text: "No shell sessions currently active. Start one from the Profiles grid.";
+                    font-size: Typography.size-base;
+                    color: Palette.text-secondary;
+                }
+                for s in active-sessions: HorizontalLayout {
+                    height: 48px;
+                    alignment: start;
+                    spacing: Tokens.space-4;
+                    Text {
+                        text: s.profile-name;
+                        font-size: Typography.size-base;
+                        font-weight: Typography.weight-bold;
+                        color: Palette.text-primary;
+                        width: 200px;
+                    }
+                    Text {
+                        text: "PID: " + s.pid;
+                        font-size: Typography.size-base;
+                        color: Palette.text-secondary;
+                        width: 100px;
+                    }
+                    Text {
+                        text: s.started-at;
+                        font-size: Typography.size-base;
+                        color: Palette.text-muted;
+                        width: 200px;
+                    }
+                    DangerButton {
+                        text: "Stop Session";
+                        clicked => { root.stop-session(s.id); }
+                        height: 28px;
+                    }
+                }
+            }
+            if active-nav == 2: VerticalLayout {
+                padding: Tokens.space-6;
+                spacing: Tokens.space-4;
+                alignment: start;
+                Text {
+                    text: ".env File Scanner";
+                    font-size: Typography.size-2xl;
+                    font-weight: Typography.weight-bold;
+                    color: Palette.text-primary;
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                HorizontalLayout {
+                    spacing: Tokens.space-3;
+                    InputField {
+                        placeholder: "Directory absolute path";
+                        value <=> root.scan-directory;
+                        width: 400px;
+                    }
+                    PrimaryButton {
+                        text: "Scan Directory";
+                        clicked => { root.scan-env-files(root.scan-directory); }
+                        y: 28px;
+                    }
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                if scanned-env-files.length == 0: Text {
+                    text: "No .env files detected or scanned yet.";
+                    font-size: Typography.size-base;
+                    color: Palette.text-secondary;
+                }
+                for path in scanned-env-files: Text {
+                    text: "Warning: Plaintext env file found at: " + path;
+                    font-size: Typography.size-base;
+                    color: Palette.danger;
+                }
+            }
+            if active-nav == 3: VerticalLayout {
+                padding: Tokens.space-6;
+                spacing: Tokens.space-4;
+                alignment: start;
+                Text {
+                    text: "Settings & System Diagnostics";
+                    font-size: Typography.size-2xl;
+                    font-weight: Typography.weight-bold;
+                    color: Palette.text-primary;
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                Text {
+                    text: "EnvGuard v0.1.0";
+                    font-size: Typography.size-base;
+                    font-weight: Typography.weight-bold;
+                    color: Palette.text-primary;
+                }
+                Text {
+                    text: "Operating System Native Secrets Engine (Zero-Plaintext Model)";
+                    font-size: Typography.size-sm;
+                    color: Palette.text-secondary;
+                }
+                Text {
+                    text: "Static linking: SQLCipher transparent database-at-rest encryption verified.";
+                    font-size: Typography.size-sm;
+                    color: Palette.success;
+                }
+            }
+        }
     }
 }
