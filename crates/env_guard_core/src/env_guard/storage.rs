@@ -3,8 +3,8 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use sqlx::{SqlitePool, Row};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
-use crate::credential_controller::models::{Profile, Credential, RuntimeSession, SessionRules, ShellType, SessionStatus};
-use crate::credential_controller::errors::StorageError;
+use crate::env_guard::models::{Profile, Credential, RuntimeSession, SessionRules, ShellType, SessionStatus};
+use crate::env_guard::errors::StorageError;
 
 pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, StorageError> {
     let options = SqliteConnectOptions::new()
