@@ -354,4 +354,11 @@ fn main() {
     });
 
     ui.run().expect("UI event loop failed");
+
+    let mut final_lock = runtime.block_on(async {
+        controller_state.lock().await
+    });
+    if let Some(ctrl) = final_lock.take() {
+        let _ = runtime.block_on(ctrl.lock());
+    }
 }
