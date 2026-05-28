@@ -1,3 +1,1 @@
-pub fn get_version() -> &'static str {
-    "0.1.0"
-}
+pub mod credential_controller;
