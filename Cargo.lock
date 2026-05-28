@@ -1367,6 +1367,7 @@ dependencies = [
  "argon2",
  "chrono",
  "dirs",
+ "hex",
  "hkdf",
  "hmac",
  "keyring",
