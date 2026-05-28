@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/env_guard_core",
+    "crates/env_guard_app"
+]
+resolver = "2"

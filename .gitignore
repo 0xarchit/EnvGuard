@@ -1,2 +1,4 @@
 .antigravitycli
 *.exe
+scratchpad
+target/
