@@ -1,0 +1,78 @@
+name: Release Builds
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-22.04
+            use_cross: true
+            artifact_name: envguard-linux-x86_64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-22.04
+            use_cross: true
+            artifact_name: envguard-linux-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
+            use_cross: false
+            artifact_name: envguard-windows-x86_64.exe
+          - target: aarch64-pc-windows-msvc
+            os: windows-2022
+            use_cross: false
+            artifact_name: envguard-windows-aarch64.exe
+          - target: x86_64-apple-darwin
+            os: macos-14
+            use_cross: false
+            artifact_name: envguard-macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-14
+            use_cross: false
+            artifact_name: envguard-macos-aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Install Perl
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y perl
+      - name: Install NASM
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
+      - name: Build with cross
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
+      - name: Build native
+        if: "!matrix.use_cross"
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+      - name: Strip binary
+        if: runner.os != 'Windows'
+        run: strip target/${{ matrix.target }}/release/envguard
+      - name: Verify static
+        if: contains(matrix.target, 'linux-musl')
+        run: |
+          result=$(ldd target/${{ matrix.target }}/release/envguard 2>&1 || true)
+          if echo "$result" | grep -q "not a dynamic executable\|statically linked"; then
+            echo "Success"
+          else
+            exit 1
+          fi
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: target/${{ matrix.target }}/release/envguard*
