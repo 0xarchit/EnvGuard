@@ -6,17 +6,18 @@ export component PrimaryButton inherits Rectangle {
     in property <bool>   loading: false;
     callback clicked;
     min-width: 80px;
-    height: 36px;
+    height: 28px;
     background: enabled ? Palette.accent : Palette.bg-elevated;
-    border-radius: Tokens.radius-md;
-    opacity: enabled ? 1.0 : 0.45;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: enabled ? Palette.accent-border : Palette.border-default;
     Text {
+        text: root.loading ? "..." : root.text;
+        font-size: Typography.size-sm;
+        font-weight: Typography.weight-semibold;
+        color: Palette.text-primary;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        text: root.loading ? "..." : root.text;
-        font-size: Typography.size-base;
-        font-weight: Typography.weight-semibold;
-        color: Palette.text-inverse;
     }
     touch := TouchArea {
         enabled: root.enabled && !root.loading;
@@ -29,19 +30,18 @@ export component SecondaryButton inherits Rectangle {
     in property <bool>   enabled: true;
     callback clicked;
     min-width: 80px;
-    height: 36px;
-    background: Palette.bg-surface;
+    height: 28px;
+    background: touch.has-hover ? Palette.bg-elevated : Palette.bg-surface;
     border-color: Palette.border-default;
     border-width: 1px;
-    border-radius: Tokens.radius-md;
-    opacity: enabled ? 1.0 : 0.45;
+    border-radius: 4px;
     Text {
+        text: root.text;
+        font-size: Typography.size-sm;
+        font-weight: Typography.weight-medium;
+        color: Palette.text-secondary;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        text: root.text;
-        font-size: Typography.size-base;
-        font-weight: Typography.weight-medium;
-        color: Palette.text-primary;
     }
     touch := TouchArea {
         enabled: root.enabled;
@@ -54,17 +54,41 @@ export component DangerButton inherits Rectangle {
     in property <bool>   enabled: true;
     callback clicked;
     min-width: 80px;
-    height: 36px;
-    background: Palette.danger;
-    border-radius: Tokens.radius-md;
-    opacity: enabled ? 1.0 : 0.45;
+    height: 28px;
+    background: touch.has-hover ? Palette.danger : Palette.danger-subtle;
+    border-color: Palette.danger;
+    border-width: 1px;
+    border-radius: 4px;
     Text {
+        text: root.text;
+        font-size: Typography.size-sm;
+        font-weight: Typography.weight-semibold;
+        color: touch.has-hover ? Palette.text-primary : Palette.danger;
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
-        text: root.text;
-        font-size: Typography.size-base;
-        font-weight: Typography.weight-semibold;
-        color: #FFFFFF;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> icon-text;
+    in property <bool>   enabled: true;
+    callback clicked;
+    width: 28px;
+    height: 28px;
+    background: touch.has-hover ? Palette.bg-elevated : transparent;
+    border-radius: 4px;
+    border-width: touch.has-hover ? 1px : 0px;
+    border-color: Palette.border-default;
+    Text {
+        text: root.icon-text;
+        font-size: Typography.size-md;
+        color: touch.has-hover ? Palette.text-primary : Palette.text-secondary;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
     }
     touch := TouchArea {
         enabled: root.enabled;
@@ -79,37 +103,33 @@ export component InputField {
     in property <bool>    enabled: true;
     in property <string>  error-text: "";
     callback edited(string);
-    height: 72px;
+    height: 48px;
     VerticalLayout {
-        spacing: Tokens.space-1;
-        if label != "": Text {
-            text: root.label;
-            font-size: Typography.size-sm;
-            font-weight: Typography.weight-medium;
-            color: Palette.text-secondary;
-        }
+        spacing: 2px;
         field-box := Rectangle {
-            height: 36px;
+            height: 28px;
             background: Palette.bg-elevated;
-            border-radius: Tokens.radius-sm;
+            border-radius: 4px;
             border-width: 1px;
             border-color: error-text != "" ? Palette.danger : Palette.border-default;
+            if value == "" : Text {
+                x: Tokens.space-2;
+                text: root.placeholder;
+                font-size: Typography.size-sm;
+                color: Palette.text-muted;
+                vertical-alignment: center;
+            }
             inner := TextInput {
-                x: Tokens.space-3;
-                y: 0;
-                width: parent.width - Tokens.space-6;
+                x: Tokens.space-2;
+                width: parent.width - Tokens.space-4;
                 height: parent.height;
                 text <=> root.value;
-                font-size: Typography.size-base;
+                font-size: Typography.size-sm;
                 color: Palette.text-primary;
                 enabled: root.enabled;
+                vertical-alignment: center;
                 edited => { root.edited(self.text); }
             }
-        }
-        if error-text != "": Text {
-            text: root.error-text;
-            font-size: Typography.size-xs;
-            color: Palette.danger;
         }
     }
 }
@@ -122,55 +142,55 @@ export component PasswordField {
     in property <string>  error-text: "";
     callback edited(string);
     in-out property <bool> visible-text: false;
-    height: 72px;
+    height: 48px;
     VerticalLayout {
-        spacing: Tokens.space-1;
-        if label != "": Text {
-            text: root.label;
-            font-size: Typography.size-sm;
-            font-weight: Typography.weight-medium;
-            color: Palette.text-secondary;
-        }
+        spacing: 2px;
         Rectangle {
-            height: 36px;
+            height: 28px;
             background: Palette.bg-elevated;
-            border-radius: Tokens.radius-sm;
+            border-radius: 4px;
             border-width: 1px;
             border-color: error-text != "" ? Palette.danger : Palette.border-default;
+            if value == "" : Text {
+                x: Tokens.space-2;
+                text: root.placeholder;
+                font-size: Typography.size-sm;
+                color: Palette.text-muted;
+                vertical-alignment: center;
+            }
             inner := TextInput {
-                x: Tokens.space-3;
-                y: 0;
-                width: parent.width - 48px;
+                x: Tokens.space-2;
+                width: parent.width - 56px;
                 height: parent.height;
                 text <=> root.value;
                 input-type: visible-text ? InputType.text : InputType.password;
-                font-size: Typography.size-base;
+                font-size: Typography.size-sm;
                 color: Palette.text-primary;
                 enabled: root.enabled;
+                vertical-alignment: center;
                 edited => { root.edited(self.text); }
             }
             Rectangle {
-                x: parent.width - 36px;
+                x: parent.width - 48px;
                 y: (parent.height - 20px) / 2;
-                width: 20px;
+                width: 40px;
                 height: 20px;
-                border-radius: Tokens.radius-sm;
+                background: touch.has-hover ? Palette.bg-overlay : Palette.bg-surface;
+                border-color: Palette.border-default;
+                border-width: 1px;
+                border-radius: 3px;
                 Text {
-                    text: visible-text ? "◉" : "○";
-                    font-size: 14px;
-                    color: Palette.text-muted;
+                    text: visible-text ? "Hide" : "Show";
+                    font-size: Typography.size-xs;
+                    font-weight: Typography.weight-medium;
+                    color: Palette.text-secondary;
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
                 }
-                TouchArea {
+                touch := TouchArea {
                     clicked => { visible-text = !visible-text; }
                 }
             }
-        }
-        if error-text != "": Text {
-            text: root.error-text;
-            font-size: Typography.size-xs;
-            color: Palette.danger;
         }
     }
 }
