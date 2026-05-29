@@ -410,6 +410,21 @@ pub async fn get_encrypted_credential_value(
     }
 }
 
+pub async fn update_profile_rules(
+    pool: &SqlitePool,
+    profile_id: Uuid,
+    rules: &SessionRules,
+) -> Result<(), StorageError> {
+    let rules_str = serde_json::to_string(rules)?;
+    sqlx::query("UPDATE profiles SET session_rules = ?, updated_at = ? WHERE id = ?")
+        .bind(rules_str)
+        .bind(Utc::now().to_rfc3339())
+        .bind(profile_id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

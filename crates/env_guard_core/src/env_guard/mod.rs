@@ -92,6 +92,23 @@ impl envGuard {
         Ok(())
     }
 
+    pub async fn get_profile(
+        &self,
+        profile_id: Uuid,
+    ) -> Result<Option<Profile>, ControllerError> {
+        let p = storage::get_profile(&self.pool, profile_id).await?;
+        Ok(p)
+    }
+
+    pub async fn update_profile_rules(
+        &self,
+        profile_id: Uuid,
+        rules: SessionRules,
+    ) -> Result<(), ControllerError> {
+        storage::update_profile_rules(&self.pool, profile_id, &rules).await?;
+        Ok(())
+    }
+
     pub async fn add_credential(
         &self,
         profile_id: Uuid,
