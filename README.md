@@ -1,105 +1,163 @@
+<p align="center">
+  <img src="assets/logo.png" alt="EnvGuard Logo" width="128" height="128" />
+</p>
+
 # EnvGuard
 
 ### Modern, Native, Cross-Platform Developer Secrets and Environment Runtime Manager
 
-EnvGuard is a secure local runtime-based credential system that completely replaces traditional plaintext `.env` files. Developers manage secrets through a native desktop application that organizes environment variables into isolated project profiles. Credentials are injected into spawned terminal or process sessions dynamically and exist solely within memory—once your session ends, the secrets vanish.
+<p align="center">
+  <a href="https://github.com/0xarchit/EnvGuard/releases">
+    <img src="https://img.shields.io/github/v/release/0xarchit/EnvGuard?style=for-the-badge&logo=github&logoColor=white&labelColor=000000&color=000000" alt="Version" />
+  </a>
+  <a href="https://github.com/0xarchit/EnvGuard/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/0xarchit/EnvGuard/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&labelColor=000000&color=000000" alt="Build Status" />
+  </a>
+  <a href="https://github.com/0xarchit/EnvGuard/releases">
+    <img src="https://img.shields.io/github/downloads/0xarchit/EnvGuard/total?style=for-the-badge&logo=rolldown&logoColor=white&labelColor=000000&color=000000" alt="Downloads" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-Apache%202.0-000000.svg?style=for-the-badge&logo=apache&logoColor=white&labelColor=000000&color=000000" alt="License" />
+  </a>
+  <a href="https://rust-lang.org">
+    <img src="https://img.shields.io/badge/Rust-1.94+-000000.svg?style=for-the-badge&logo=rust&logoColor=white&labelColor=000000&color=000000" alt="Rust" />
+  </a>
+</p>
+
+EnvGuard is a secure local runtime-based credential management system designed to completely replace unencrypted, risky dot-env files. Developers manage application environment secrets through a GPU-accelerated desktop interface that groups credentials into cryptographically isolated project profiles. Environment variables are dynamically injected into memory space solely when terminal sessions are spawned, vanishing instantly once the shell session exits.
 
 ---
 
-## Why EnvGuard? The Problem with `.env` Files
+## The Liability of Plaintext Environment Files
 
-For years, developers have relied on `.env` files to store configuration and sensitive keys. This approach introduces significant security liabilities:
+Storing application secrets in dot-env files introduces severe vulnerabilities into modern development environments:
 
-1. **Plaintext Storage:** Secrets sit unencrypted on local disks, accessible by any process running on the system or unauthorized users with physical access.
-2. **Accidental Commits:** Despite `.gitignore` rules, `.env` files are routinely pushed to public repositories, resulting in immediate compromise of critical keys.
-3. **Lack of Lifecycle Control:** Environment variables persist in shells indefinitely until closed, leaking across processes or remaining accessible in background contexts.
-4. **Weak Access Audits:** There is no centralized tracking or security auditing of who, when, or what process requested access to a specific credential.
+1. **Plaintext Storage**: Sensitive tokens sit unencrypted on local disks, completely exposed to host process scanning or physical extraction.
+2. **Repository Exposure**: Accidents during git commits expose unencrypted configurations to public repositories, requiring instant credential rotations.
+3. **No Lifecycle Control**: Plaintext secrets persist indefinitely on disk or in shell process environments, leaving them exposed across background tasks.
+4. **Bypassed Audits**: Access control is unmonitored; there are zero audits recording when or what application requested a credential.
 
-EnvGuard shifts the paradigm. Environment variables should behave like temporary, authenticated runtime sessions rather than permanent plaintext files.
-
----
-
-## Key Feature Concepts
-
-### isolated Project Profiles
-Manage separate configurations for development, staging, testing, and production. Profiles are cryptographically isolated from one another.
-
-### On-Demand Session Injection
-Instead of storing variables in disk files, EnvGuard spawns child processes (terminal or command runners) and injects environment variables directly into their memory space. Sub-processes inherit these variables, but parent or parallel sessions remain completely blind to them.
-
-### Memory Zeroization
-Security-sensitive keys and passwords are actively zeroed out from system memory immediately after use, preventing memory-scraping attacks on the developer machine.
-
-### Expiration Timers
-Define automated session lifetimes. Secrets automatically expire and disappear from the active runtime after the specified duration, minimizing the window of vulnerability.
+EnvGuard introduces a secure, ephemeral runtime architecture. Environment variables behave like temporary, authenticated sessions rather than permanent plaintext disk files.
 
 ---
 
-## Platform Support Matrix
+## Core Security and Architecture Features
 
-EnvGuard produces independent static binaries for each target platform with no external runtime dependencies:
+### Zero-Plaintext Memory Model
+Decrypted credentials are kept in memory for the shortest time possible. The Slint desktop client displays masked indicators by default. Plaintext secrets are fetched dynamically on-demand only when clicking Reveal or Copy, and are instantly purged from the memory space when clicking Hide.
 
-| Operating System | Distributions/Versions | Packaging Targets |
+### SQLCipher Database Encryption at Rest
+All profile configurations and credential metadata are stored in a local SQLite database compiled with static SQLCipher support. Page-level encryption guarantees complete protection at rest.
+
+### Offline-First Cryptographic Isolation
+Master encryption keys are derived using the Argon2id key derivation function with customized memory parameters. To protect page 0 of the SQLite database and allow safe bootstrap sequences, database salts are isolated in an external dot-salt file, ensuring a zero-plaintext sqlite header block.
+
+### Session Lifetime Controls and Allowed Shells
+Define automated session lifetimes directly from the GUI configurator. Secrets automatically expire and disappear from active shells once the specified timer runs out. Additionally, enforce terminal restrictions, ensuring profiles are only loaded inside specific shell environments (e.g. Bash or PowerShell).
+
+### ConPTY Windows Fallbacks
+To provide stability across older Windows environments, the spawner automatically checks ConPTY capabilities, dynamically falling back to standard pipe-redirected child processes when pseudo-terminals are unsupported.
+
+---
+
+## Architecture Flow
+
+The following diagram illustrates how EnvGuard processes user credentials, manages local SQLCipher storage, and injects variables directly into terminal processes:
+
+```mermaid
+graph TD
+    User([Developer]) -->|Input Master Password| App[EnvGuard GUI]
+    App -->|Load Salt from vault.salt| KDF[Argon2id Key Derivation]
+    KDF -->|Derive Database and Master Keys| Keys(Split 256-bit Keys)
+    Keys -->|Decrypt Database Key| DB[(Encrypted SQLCipher Storage)]
+    Keys -->|Decrypt Credentials on Demand| Core[EnvGuard Core]
+    Core -->|Inject Variables into Process Environment| Shell[Spawned Terminal Shell]
+    Shell -->|Process Expiration or Window Exit| Clean[Automatic Memory Purge]
+```
+
+---
+
+## User Experience Flow
+
+The following flowchart describes the initialization, unlocking, and factory-reset lifecycles of the application vault:
+
+```mermaid
+graph TD
+    Start([Launch EnvGuard]) --> CheckDb{Does vault.db exist?}
+    
+    CheckDb -->|No| SetupMode[Boot in Setup Mode]
+    SetupMode -->|Display Title| TitleNew["Create Master Password"]
+    SetupMode -->|Display Button| ButtonNew["Create Vault"]
+    SetupMode -->|Hide Button| WipeNew[Hide Reset and Wipe Button]
+    SetupMode -->|Input Password| InitVault[Create Vault and Generate OS CSPRNG Salt]
+    InitVault --> Dashboard[Open Main Dashboard]
+
+    CheckDb -->|Yes| LockMode[Boot in Unlock Mode]
+    LockMode -->|Display Title| TitleOld["Unlock Vault"]
+    LockMode -->|Display Button| ButtonOld["Unlock"]
+    LockMode -->|Show Button| WipeOld[Show Reset and Wipe Button]
+    
+    LockMode -->|Input Password| Validate[Argon2id Hashing and SQLCipher Open]
+    Validate -->|Success| Dashboard
+    Validate -->|Wrong Password| DecryptFail[Show Invalid Password Error]
+    
+    WipeOld -->|Click Reset| ConfirmWipe[Close DB pool and Delete vault.db / vault.salt]
+    ConfirmWipe --> SetupMode
+```
+
+---
+
+## Technical Architecture
+
+* **Rust**: Memory-safe, highly optimized, and compiled directly to platform-native executables.
+* **Slint UI**: GPU-accelerated, lightweight graphical interface that consumes less than 30MB of RAM.
+* **SQLCipher**: Strong 256-bit AES database encryption.
+* **Zeroize**: Clears sensitive cryptographic keys and plaintexts directly from RAM.
+* **Tokio**: Scalable asynchronous runtime managing background process lifecycles.
+* **Arboard**: Secure clipboard manager.
+
+---
+
+## Installation and Platform Packages
+
+EnvGuard is distributed as a platform-native installer rather than raw binaries. Choose the installer matching your development machine:
+
+| Operating System | Native Package Formats | Installation Method |
 | :--- | :--- | :--- |
-| **Windows** | Windows 10, Windows 11 | MSI, Winget |
-| **macOS** | Apple Silicon (M1/M2/M3), Intel | DMG, Homebrew |
-| **Linux** | Arch Linux, Ubuntu, Debian, Fedora | AppImage, AUR (pkgbuild), DEB, RPM |
+| **Windows** | .msi (WiX), .exe (NSIS) | Run the setup wizard to register Start Menu shortcuts and paths |
+| **macOS** | .dmg (Disk Image), .app bundle | Open DMG and drag EnvGuard.app into your Applications folder |
+| **Linux** | .deb package, .AppImage | Install deb via dpkg or run the portable AppImage natively |
+
+Download the latest version directly from our Releases page.
 
 ---
 
-## Tech Stack & Architecture Choices
+## macOS Gatekeeper Bypass Instructions
 
-EnvGuard is built entirely in Rust, avoiding heavy frameworks like Electron or Chromium to ensure optimal performance and security.
+Because EnvGuard is built as independent open-source software, compiled release packages are not signed with a paid Apple Developer ID certificate. Consequently, macOS Gatekeeper may block execution during the first launch with a warning indicating that the software is unsigned or damaged.
 
-* **Rust Core:** Provides memory safety, high performance, and allows compiling to standalone static binaries with no external runtime dependencies.
-* **Slint UI:** A lightweight, modern, GPU-accelerated native user interface toolkit that consumes minimal memory compared to webviews.
-* **Tokio:** An asynchronous runtime for handling non-blocking system tasks, timers, and PTY processes efficiently.
-* **AES-256-GCM:** Authenticated symmetric encryption used to protect local secrets databases.
-* **Argon2id:** State-of-the-art key derivation function to derive secure database keys from your master password.
-* **SQLCipher:** Encrypted SQLite engine used to store project configurations, profile data, and encrypted secrets locally.
-* **Zeroize Crate:** Provides secure memory clearing by zeroizing Rust data structures containing cryptographic materials or sensitive credentials.
+To bypass this OS restriction and register EnvGuard natively, run the following terminal command after dragging the app to your Applications folder:
 
----
+```bash
+xattr -r -d com.apple.quarantine /Applications/EnvGuard.app
+```
 
-## Getting Started
-
-EnvGuard is currently in active early development. Stable, ready-to-install releases are not yet available. 
-
-To track progress and get updates when the first pre-release builds become available:
-1. Keep an eye on our [Releases](https://github.com/0xarchit/EnvGuard/releases) page for downloadable installer packages (MSI, DMG, AppImage).
-2. Read the [CONTRIBUTING.md](.github/CONTRIBUTING.md) guide if you are interested in local development, compiling the codebase, or reviewing the early-stage code.
+Once this quarantine flag is removed, you can launch EnvGuard natively via Spotlight or the Applications launcher.
 
 ---
 
-## Roadmap
+## Developer Quickstart
 
-### Phase 1: Core Cryptography & Storage
-* AES-GCM encrypted local SQLite storage using SQLCipher.
-* Argon2id master password derivation with customizable memory costs.
-* Zeroize integration for cryptographic material and secret values.
-* Local secret import scanning for existing `.env` files.
+To run a secure, temporary runtime environment:
 
-### Phase 2: Runtime Injection & UI
-* Slint desktop application implementation (GPU-accelerated UI).
-* Local PTY-based shell spawning and terminal injection.
-* Automated session expiration timers and lifecycle controls.
-* Native OS keychain integrations (Windows Credential Manager, macOS Keychain, Linux Secret Service).
-
-### Phase 3: Developer Utilities & Integrations
-* Git leak pre-commit hooks to detect unencrypted credentials.
-* SSH key orchestration and dynamic injection.
-* Docker runtime credential passing.
-* Dynamic cloud token integration (AWS, GCP, Vault).
-* Secure, end-to-end encrypted team credential sharing.
-
----
-
-## Contributing
-
-We welcome contributions from the developer and security communities. Please read [CONTRIBUTING.md](.github/CONTRIBUTING.md) to understand our development workflow, branch structures, code requirements, and security guidelines before submitting a Pull Request.
+1. Launch EnvGuard and unlock your vault using your master password.
+2. Select your project profile in the navigation dashboard.
+3. Configure the session rules, allowed shells, and environment variables.
+4. Click Start Session to spawn your chosen shell process with credentials automatically loaded.
+5. Once your work is finished, simply exit the terminal window. All injected environment secrets are cleared from system memory automatically.
 
 ---
 
 ## License
 
-EnvGuard is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for the full text.
+EnvGuard is licensed under the Apache License, Version 2.0. See the LICENSE file for the full license text.
