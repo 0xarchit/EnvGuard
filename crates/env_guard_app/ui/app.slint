@@ -37,6 +37,7 @@ export component AppWindow inherits Window {
     callback add-credential(string, string, string);
     callback delete-credential(string);
     callback copy-to-clipboard(string);
+    callback decrypt-credential(string) -> string;
     callback start-session(string);
     callback stop-session(string);
     callback scan-env-files(string);
@@ -188,12 +189,19 @@ export component AppWindow inherits Window {
                     }
                     SecondaryButton {
                         text: c.value-revealed ? "Hide" : "Reveal";
-                        clicked => { c.value-revealed = !c.value-revealed; }
+                        clicked => {
+                            if (!c.value-revealed) {
+                                c.value-plaintext = root.decrypt-credential(c.id);
+                            } else {
+                                c.value-plaintext = "";
+                            }
+                            c.value-revealed = !c.value-revealed;
+                        }
                         height: 28px;
                     }
                     SecondaryButton {
                         text: "Copy";
-                        clicked => { root.copy-to-clipboard(c.value-plaintext); }
+                        clicked => { root.copy-to-clipboard(c.id); }
                         height: 28px;
                     }
                     DangerButton {

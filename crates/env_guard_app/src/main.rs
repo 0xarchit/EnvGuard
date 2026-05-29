@@ -127,14 +127,14 @@ fn main() {
         tokio::spawn(async move {
             let lock = sp_state.lock().await;
             if let Some(ctrl) = lock.as_ref() {
-                if let Ok(creds) = ctrl.get_decrypted_credentials(id_uuid).await {
+                if let Ok(creds) = ctrl.get_credentials_metadata(id_uuid).await {
                     sp_handle.upgrade_in_event_loop(move |ui| {
                         let slint_creds: Vec<CredentialUiData> = creds.into_iter().map(|c| {
                             CredentialUiData {
                                 id: c.id.to_string().into(),
                                 key: c.key.into(),
                                 value_revealed: false,
-                                value_plaintext: (*c.value).clone().into(),
+                                value_plaintext: "".into(),
                             }
                         }).collect();
                         ui.set_credentials(slint::ModelRc::new(slint::VecModel::from(slint_creds)));
@@ -185,14 +185,14 @@ fn main() {
             let lock = ac_state.lock().await;
             if let Some(ctrl) = lock.as_ref() {
                 let _ = ctrl.add_credential(profile_uuid, &key_str, &val_str).await;
-                if let Ok(creds) = ctrl.get_decrypted_credentials(profile_uuid).await {
+                if let Ok(creds) = ctrl.get_credentials_metadata(profile_uuid).await {
                     ac_handle.upgrade_in_event_loop(move |ui| {
                         let slint_creds: Vec<CredentialUiData> = creds.into_iter().map(|c| {
                             CredentialUiData {
                                 id: c.id.to_string().into(),
                                 key: c.key.into(),
                                 value_revealed: false,
-                                value_plaintext: (*c.value).clone().into(),
+                                value_plaintext: "".into(),
                             }
                         }).collect();
                         ui.set_credentials(slint::ModelRc::new(slint::VecModel::from(slint_creds)));
@@ -221,7 +221,7 @@ fn main() {
             if let Some(ctrl) = lock.as_ref() {
                 let _ = ctrl.delete_credential(id_uuid).await;
                 if !profile_uuid.is_nil() {
-                    if let Ok(creds) = ctrl.get_decrypted_credentials(profile_uuid).await {
+                    if let Ok(creds) = ctrl.get_credentials_metadata(profile_uuid).await {
                         let dc_handle_clone = dc_handle.clone();
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(ui_ref) = dc_handle_clone.upgrade() {
@@ -230,7 +230,7 @@ fn main() {
                                         id: c.id.to_string().into(),
                                         key: c.key.into(),
                                         value_revealed: false,
-                                        value_plaintext: (*c.value).clone().into(),
+                                        value_plaintext: "".into(),
                                     }
                                 }).collect();
                                 ui_ref.set_credentials(slint::ModelRc::new(slint::VecModel::from(slint_creds)));
@@ -324,11 +324,36 @@ fn main() {
         });
     });
 
-    ui.on_copy_to_clipboard(move |text| {
-        let text_str = text.to_string();
-        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-            let _ = clipboard.set_text(text_str);
-        }
+    let cc_state = Arc::clone(&controller_state);
+    ui.on_copy_to_clipboard(move |id_str| {
+        let cc_state = Arc::clone(&cc_state);
+        let id_uuid = Uuid::parse_str(&id_str.to_string()).unwrap_or_default();
+        tokio::spawn(async move {
+            let lock = cc_state.lock().await;
+            if let Some(ctrl) = lock.as_ref() {
+                if let Ok(val) = ctrl.decrypt_credential(id_uuid).await {
+                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                        let _ = clipboard.set_text(val);
+                    }
+                }
+            }
+        });
+    });
+
+    let handle_clone = runtime.handle().clone();
+    let dc_clip_state = Arc::clone(&controller_state);
+    ui.on_decrypt_credential(move |id_str| {
+        let dc_clip_state = Arc::clone(&dc_clip_state);
+        let id_uuid = Uuid::parse_str(&id_str.to_string()).unwrap_or_default();
+        let val = handle_clone.block_on(async move {
+            let lock = dc_clip_state.lock().await;
+            if let Some(ctrl) = lock.as_ref() {
+                ctrl.decrypt_credential(id_uuid).await.unwrap_or_default()
+            } else {
+                "".to_string()
+            }
+        });
+        val.into()
     });
 
     let _timer_state = Arc::clone(&controller_state);

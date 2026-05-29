@@ -393,6 +393,23 @@ pub async fn get_session_profile_and_pid(
     }
 }
 
+pub async fn get_encrypted_credential_value(
+    pool: &SqlitePool,
+    id: Uuid,
+) -> Result<Option<(Vec<u8>, Vec<u8>)>, StorageError> {
+    let row = sqlx::query("SELECT encrypted_value, nonce FROM credentials WHERE id = ?")
+        .bind(id.to_string())
+        .fetch_optional(pool)
+        .await?;
+    if let Some(r) = row {
+        let enc_val: Vec<u8> = r.get(0);
+        let nonce: Vec<u8> = r.get(1);
+        Ok(Some((enc_val, nonce)))
+    } else {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

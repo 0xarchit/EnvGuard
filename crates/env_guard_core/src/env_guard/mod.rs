@@ -131,6 +131,27 @@ impl envGuard {
         Ok(results)
     }
 
+    pub async fn get_credentials_metadata(
+        &self,
+        profile_id: Uuid,
+    ) -> Result<Vec<Credential>, ControllerError> {
+        let list = storage::get_credentials_for_profile(&self.pool, profile_id).await?;
+        Ok(list)
+    }
+
+    pub async fn decrypt_credential(
+        &self,
+        credential_id: Uuid,
+    ) -> Result<String, ControllerError> {
+        let opt = storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
+        if let Some((enc_val, nonce)) = opt {
+            let plaintext = crypto::decrypt_value(&enc_val, &nonce, &self.master_key)?;
+            Ok((*plaintext).clone())
+        } else {
+            Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
+        }
+    }
+
     pub async fn delete_credential(&self, credential_id: Uuid) -> Result<(), ControllerError> {
         storage::delete_credential(&self.pool, credential_id).await?;
         Ok(())
