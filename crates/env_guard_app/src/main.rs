@@ -127,8 +127,15 @@ fn main() {
         tokio::spawn(async move {
             let lock = sp_state.lock().await;
             if let Some(ctrl) = lock.as_ref() {
+                let profile_opt = ctrl.get_profile(id_uuid).await.unwrap_or(None);
                 if let Ok(creds) = ctrl.get_credentials_metadata(id_uuid).await {
                     sp_handle.upgrade_in_event_loop(move |ui| {
+                        if let Some(p) = profile_opt {
+                            let timeout_str = p.session_rules.expiration_seconds.map(|s| s.to_string()).unwrap_or_default();
+                            let shells_str = p.session_rules.allowed_shells.iter().map(|s| format!("{:?}", s)).collect::<Vec<_>>().join(", ");
+                            ui.set_session_timeout(timeout_str.into());
+                            ui.set_allowed_shells(shells_str.into());
+                        }
                         let slint_creds: Vec<CredentialUiData> = creds.into_iter().map(|c| {
                             CredentialUiData {
                                 id: c.id.to_string().into(),
@@ -140,6 +147,43 @@ fn main() {
                         ui.set_credentials(slint::ModelRc::new(slint::VecModel::from(slint_creds)));
                     }).expect("Event loop queue failed");
                 }
+            }
+        });
+    });
+
+    let spr_state = Arc::clone(&controller_state);
+    ui.on_save_profile_rules(move |profile_id, timeout_str, allowed_shells_str| {
+        let spr_state = Arc::clone(&spr_state);
+        let profile_uuid = Uuid::parse_str(&profile_id.to_string()).unwrap_or_default();
+        let timeout_trimmed = timeout_str.to_string().trim().to_string();
+        let shells_trimmed = allowed_shells_str.to_string();
+        tokio::spawn(async move {
+            let expiration_seconds = if timeout_trimmed.is_empty() {
+                None
+            } else {
+                timeout_trimmed.parse::<u64>().ok()
+            };
+            let allowed_shells = shells_trimmed
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .map(|s| match s.as_str() {
+                    "bash" => ShellType::Bash,
+                    "zsh" => ShellType::Zsh,
+                    "fish" => ShellType::Fish,
+                    "powershell" => ShellType::PowerShell,
+                    "cmd" => ShellType::Cmd,
+                    other => ShellType::Custom(other.to_string()),
+                })
+                .collect();
+            let rules = SessionRules {
+                expiration_seconds,
+                allowed_shells,
+                require_auth_on_resume: false,
+            };
+            let lock = spr_state.lock().await;
+            if let Some(ctrl) = lock.as_ref() {
+                let _ = ctrl.update_profile_rules(profile_uuid, rules).await;
             }
         });
     });

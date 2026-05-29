@@ -28,6 +28,8 @@ export component AppWindow inherits Window {
     in-out property <string> new-cred-key: "";
     in-out property <string> new-cred-val: "";
     in-out property <string> scan-directory: "";
+    in-out property <string> session-timeout: "";
+    in-out property <string> allowed-shells: "";
 
     callback unlock(string);
     callback lock-vault;
@@ -41,6 +43,7 @@ export component AppWindow inherits Window {
     callback start-session(string);
     callback stop-session(string);
     callback scan-env-files(string);
+    callback save-profile-rules(string, string, string);
 
     if vault-locked: UnlockView {
         error-text: root.error-message;
@@ -139,6 +142,27 @@ export component AppWindow inherits Window {
                             root.delete-profile(root.selected-profile-id);
                             root.selected-profile-id = "";
                         }
+                    }
+                }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
+                HorizontalLayout {
+                    spacing: Tokens.space-3;
+                    InputField {
+                        placeholder: "Timeout (secs, e.g. 3600)";
+                        value <=> root.session-timeout;
+                        width: 200px;
+                    }
+                    InputField {
+                        placeholder: "Allowed Shells (e.g. Cmd, Bash)";
+                        value <=> root.allowed-shells;
+                        width: 250px;
+                    }
+                    PrimaryButton {
+                        text: "Save Rules";
+                        clicked => {
+                            root.save-profile-rules(root.selected-profile-id, root.session-timeout, root.allowed-shells);
+                        }
+                        y: 28px;
                     }
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
