@@ -7,7 +7,17 @@ rustflags = ["-C", "target-feature=+crt-static"]
 linker = "aarch64-linux-musl-gcc"
 
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = [
+  "-C", "target-feature=+crt-static",
+  "-C", "link-arg=/OPT:REF",
+  "-C", "link-arg=/OPT:ICF",
+  "-C", "link-arg=/INCREMENTAL:NO"
+]
 
 [target.aarch64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = [
+  "-C", "target-feature=+crt-static",
+  "-C", "link-arg=/OPT:REF",
+  "-C", "link-arg=/OPT:ICF",
+  "-C", "link-arg=/INCREMENTAL:NO"
+]

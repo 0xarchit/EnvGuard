@@ -23,6 +23,7 @@ product-name = "EnvGuard"
 identifier = "com.envguard.app"
 publisher = "0xarchit"
 out-dir = "../../dist"
+icons = ["icons/logo.png"]
 binaries = [
-  { filename = "env_guard_app", run = true }
+  { path = "env_guard_app", main = true }
 ]
