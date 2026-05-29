@@ -1,0 +1,204 @@
+import { Palette, Typography, Tokens } from "theme.slint";
+import { PrimaryButton, SecondaryButton, DangerButton, InputField, PasswordField } from "components.slint";
+
+export struct ProfileUiData {
+    id: string,
+    name: string,
+    description: string,
+    credential-count: int,
+    is-active: bool,
+    session-count: int,
+}
+
+export struct CredentialUiData {
+    id: string,
+    key: string,
+    value-revealed: bool,
+    value-plaintext: string,
+}
+
+export struct SessionUiData {
+    id: string,
+    profile-name: string,
+    shell: string,
+    started-at: string,
+    expires-at: string,
+    pid: int,
+    status: string,
+}
+
+export component Sidebar inherits Rectangle {
+    in property <int> active-item: 0;
+    in property <int> active-session-count: 0;
+    callback navigate(int);
+    callback lock-vault;
+    width: Tokens.sidebar-width;
+    background: Palette.sidebar-bg;
+    VerticalLayout {
+        padding: Tokens.space-4;
+        spacing: Tokens.space-2;
+        alignment: start;
+        Text {
+            text: "EnvGuard";
+            font-size: Typography.size-lg;
+            font-weight: Typography.weight-bold;
+            color: Palette.text-primary;
+            height: 48px;
+        }
+        Rectangle { height: 1px; background: Palette.border-subtle; }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(0); }
+            Rectangle {
+                background: active-item == 0 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: "Profiles";
+                    font-size: Typography.size-base;
+                    color: active-item == 0 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(1); }
+            Rectangle {
+                background: active-item == 1 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: "Active Sessions (" + active-session-count + ")";
+                    font-size: Typography.size-base;
+                    color: active-item == 1 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(2); }
+            Rectangle {
+                background: active-item == 2 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: ".env Scanner";
+                    font-size: Typography.size-base;
+                    color: active-item == 2 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        TouchArea {
+            height: 40px;
+            clicked => { root.navigate(3); }
+            Rectangle {
+                background: active-item == 3 ? Palette.sidebar-item-active : transparent;
+                border-radius: Tokens.radius-md;
+                Text {
+                    x: Tokens.space-3;
+                    y: (parent.height - self.height) / 2;
+                    text: "Settings";
+                    font-size: Typography.size-base;
+                    color: active-item == 3 ? Palette.text-primary : Palette.text-secondary;
+                }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        PrimaryButton {
+            text: "Lock Vault";
+            clicked => { root.lock-vault(); }
+        }
+    }
+}
+
+export component UnlockView inherits Rectangle {
+    in property <string> error-text: "";
+    in-out property <string> password: "";
+    callback unlock(string);
+    background: Palette.bg-base;
+    VerticalLayout {
+        alignment: center;
+        spacing: Tokens.space-4;
+        width: 320px;
+        x: (parent.width - self.width) / 2;
+        Text {
+            text: "Unlock Vault";
+            font-size: Typography.size-2xl;
+            font-weight: Typography.weight-bold;
+            color: Palette.text-primary;
+            horizontal-alignment: center;
+        }
+        pw := PasswordField {
+            label: "Master Password";
+            placeholder: "Enter password";
+            value <=> root.password;
+            error-text: root.error-text;
+        }
+        PrimaryButton {
+            text: "Unlock";
+            clicked => { root.unlock(root.password); }
+        }
+    }
+}
+
+export component ProfileCard inherits Rectangle {
+    in property <ProfileUiData> profile;
+    callback clicked;
+    callback start-session;
+    height: 140px;
+    background: Palette.bg-surface;
+    border-radius: Tokens.radius-lg;
+    border-width: 1px;
+    border-color: profile.is-active ? Palette.accent-border : Palette.border-subtle;
+    VerticalLayout {
+        padding: Tokens.space-4;
+        spacing: Tokens.space-2;
+        HorizontalLayout {
+            alignment: space-between;
+            Text {
+                text: profile.name;
+                font-size: Typography.size-md;
+                font-weight: Typography.weight-semibold;
+                color: Palette.text-primary;
+                overflow: elide;
+                max-width: 140px;
+            }
+            if profile.is-active: Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: Tokens.radius-full;
+                background: Palette.success;
+                y: 4px;
+            }
+        }
+        if profile.description != "": Text {
+            text: profile.description;
+            font-size: Typography.size-sm;
+            color: Palette.text-secondary;
+            overflow: elide;
+            wrap: word-wrap;
+            max-height: 32px;
+        }
+        Rectangle { height: 1px; background: Palette.border-subtle; }
+        HorizontalLayout {
+            alignment: space-between;
+            Text {
+                text: profile.credential-count + " credentials";
+                font-size: Typography.size-xs;
+                color: Palette.text-muted;
+            }
+            PrimaryButton {
+                text: "Start";
+                clicked => { root.start-session(); }
+                height: 24px;
+                min-width: 48px;
+            }
+        }
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}

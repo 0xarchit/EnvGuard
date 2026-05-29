@@ -1,0 +1,75 @@
+export global Palette {
+    in-out property <bool> dark-mode: true;
+    out property <color> bg-base:     dark-mode ? #0D0F1A : #F4F5F8;
+    out property <color> bg-surface:  dark-mode ? #13162B : #FFFFFF;
+    out property <color> bg-elevated: dark-mode ? #1A1E35 : #ECEEF5;
+    out property <color> bg-overlay:  dark-mode ? #21263F : #FFFFFF;
+    out property <color> text-primary:   dark-mode ? #E6E8F2 : #1A1E35;
+    out property <color> text-secondary: dark-mode ? #8B90B0 : #5A5F7D;
+    out property <color> text-muted:     dark-mode ? #4A5070 : #9095B0;
+    out property <color> text-inverse:   dark-mode ? #0D0F1A : #F4F5F8;
+    out property <color> accent:        dark-mode ? #6366F1 : #4F52E0;
+    out property <color> accent-hover:  dark-mode ? #818CF8 : #6366F1;
+    out property <color> accent-subtle: dark-mode ? #1E213F : #ECEEF8;
+    out property <color> accent-border: dark-mode ? #3D4280 : #A5A8F0;
+    out property <color> success:        dark-mode ? #22C55E : #16A34A;
+    out property <color> success-subtle: dark-mode ? #0F2A1A : #DCFCE7;
+    out property <color> warning:        dark-mode ? #F59E0B : #D97706;
+    out property <color> warning-subtle: dark-mode ? #2A1F08 : #FEF3C7;
+    out property <color> danger:         dark-mode ? #EF4444 : #DC2626;
+    out property <color> danger-subtle:  dark-mode ? #2A0F0F : #FEE2E2;
+    out property <color> info:           dark-mode ? #3B82F6 : #2563EB;
+    out property <color> info-subtle:    dark-mode ? #0F1A2A : #DBEAFE;
+    out property <color> border-subtle:  dark-mode ? #1E2238 : #E2E4EE;
+    out property <color> border-default: dark-mode ? #2A2F50 : #C8CCDF;
+    out property <color> border-strong:  dark-mode ? #6366F1 : #4F52E0;
+    out property <color> sidebar-bg:          dark-mode ? #0B0D17 : #ECEEF5;
+    out property <color> sidebar-item-hover:  dark-mode ? #1A1E35 : #DDDFF0;
+    out property <color> sidebar-item-active: dark-mode ? #1E213F : #D4D7F5;
+}
+
+export global Typography {
+    out property <length> size-xs:   11px;
+    out property <length> size-sm:   12px;
+    out property <length> size-base: 13px;
+    out property <length> size-md:   14px;
+    out property <length> size-lg:   16px;
+    out property <length> size-xl:   20px;
+    out property <length> size-2xl:  24px;
+    out property <length> size-3xl:  30px;
+    out property <int> weight-regular: 400;
+    out property <int> weight-medium:  500;
+    out property <int> weight-semibold: 600;
+    out property <int> weight-bold:    700;
+    out property <length> tracking-tight:  -0.3px;
+    out property <length> tracking-normal: 0px;
+    out property <length> tracking-wide:   0.4px;
+}
+
+export global Tokens {
+    out property <length> space-1:  4px;
+    out property <length> space-2:  8px;
+    out property <length> space-3:  12px;
+    out property <length> space-4:  16px;
+    out property <length> space-5:  20px;
+    out property <length> space-6:  24px;
+    out property <length> space-8:  32px;
+    out property <length> space-10: 40px;
+    out property <length> space-12: 48px;
+    out property <length> space-16: 64px;
+    out property <length> radius-sm: 4px;
+    out property <length> radius-md: 8px;
+    out property <length> radius-lg: 12px;
+    out property <length> radius-xl: 16px;
+    out property <length> radius-full: 999px;
+    out property <length> sidebar-width:          240px;
+    out property <length> sidebar-collapsed-width: 60px;
+    out property <length> detail-panel-width: 320px;
+    out property <length> row-height-sm:  32px;
+    out property <length> row-height-md:  44px;
+    out property <length> row-height-lg:  56px;
+    out property <duration> duration-fast:   120ms;
+    out property <duration> duration-base:   200ms;
+    out property <duration> duration-slow:   300ms;
+    out property <duration> duration-xslow:  450ms;
+}
