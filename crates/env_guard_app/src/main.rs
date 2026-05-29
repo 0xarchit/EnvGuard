@@ -324,7 +324,6 @@ fn main() {
         });
     });
 
-    let cp_clip_handle = ui_handle.clone();
     ui.on_copy_to_clipboard(move |text| {
         let text_str = text.to_string();
         if let Ok(mut clipboard) = arboard::Clipboard::new() {

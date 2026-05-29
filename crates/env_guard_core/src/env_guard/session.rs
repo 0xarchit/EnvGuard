@@ -111,6 +111,11 @@ pub async fn kill_process(pid: u32) -> Result<(), SessionError> {
     Ok(())
 }
 
+struct SessionExitStatus {
+    success: bool,
+    desc: String,
+}
+
 pub async fn spawn_session(
     profile: &Profile,
     credentials: Vec<PlaintextCredential>,
@@ -167,7 +172,13 @@ pub async fn spawn_session(
                 .spawn_command(cmd)
                 .map_err(|e| SessionError::PtyError(e.to_string()))?;
             let pid = child.process_id();
-            let waiter: Box<dyn FnOnce() -> Result<std::process::ExitStatus, std::io::Error> + Send + 'static> = Box::new(move || child.wait());
+            let waiter: Box<dyn FnOnce() -> Result<SessionExitStatus, std::io::Error> + Send + 'static> = Box::new(move || {
+                let status = child.wait()?;
+                Ok(SessionExitStatus {
+                    success: status.success(),
+                    desc: format!("{:?}", status),
+                })
+            });
             (pid, waiter)
         }
         Err(_) => {
@@ -178,7 +189,13 @@ pub async fn spawn_session(
             }
             let mut child = cmd.spawn().map_err(|e| SessionError::Io(e))?;
             let pid = child.id();
-            let waiter: Box<dyn FnOnce() -> Result<std::process::ExitStatus, std::io::Error> + Send + 'static> = Box::new(move || child.wait());
+            let waiter: Box<dyn FnOnce() -> Result<SessionExitStatus, std::io::Error> + Send + 'static> = Box::new(move || {
+                let status = child.wait()?;
+                Ok(SessionExitStatus {
+                    success: status.success(),
+                    desc: format!("{:?}", status),
+                })
+            });
             (Some(pid), waiter)
         }
     };
@@ -221,8 +238,8 @@ pub async fn spawn_session(
             tokio::select! {
                 res = &mut exit_fut => {
                     match res {
-                        Ok(Ok(status)) if status.success() => SessionStatus::Terminated,
-                        Ok(Ok(status)) => SessionStatus::Failed(format!("Exit code: {:?}", status)),
+                        Ok(Ok(status)) if status.success => SessionStatus::Terminated,
+                        Ok(Ok(status)) => SessionStatus::Failed(status.desc),
                         _ => SessionStatus::Failed("Process exited abnormally".to_string()),
                     }
                 }
@@ -236,8 +253,8 @@ pub async fn spawn_session(
         } else {
             let res = exit_fut.await;
             match res {
-                Ok(Ok(status)) if status.success() => SessionStatus::Terminated,
-                Ok(Ok(status)) => SessionStatus::Failed(format!("Exit code: {:?}", status)),
+                Ok(Ok(status)) if status.success => SessionStatus::Terminated,
+                Ok(Ok(status)) => SessionStatus::Failed(status.desc),
                 _ => SessionStatus::Failed("Process exited abnormally".to_string()),
             }
         };
