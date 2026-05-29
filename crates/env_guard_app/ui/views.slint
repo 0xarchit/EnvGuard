@@ -177,31 +177,34 @@ export component ProfileCard inherits Rectangle {
         padding-right: Tokens.space-4;
         spacing: Tokens.space-4;
         alignment: space-between;
-        VerticalLayout {
-            alignment: center;
-            spacing: 2px;
-            HorizontalLayout {
-                spacing: Tokens.space-2;
-                alignment: start;
-                if profile.is-active: Rectangle {
-                    width: 6px;
-                    height: 6px;
-                    border-radius: Tokens.radius-full;
-                    background: Palette.success;
-                    y: 6px;
+        TouchArea {
+            clicked => { root.clicked(); }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: Tokens.space-2;
+                    alignment: start;
+                    if profile.is-active: Rectangle {
+                        width: 6px;
+                        height: 6px;
+                        border-radius: Tokens.radius-full;
+                        background: Palette.success;
+                        y: 6px;
+                    }
+                    Text {
+                        text: profile.name;
+                        font-size: Typography.size-base;
+                        font-weight: Typography.weight-semibold;
+                        color: Palette.text-primary;
+                    }
                 }
-                Text {
-                    text: profile.name;
-                    font-size: Typography.size-base;
-                    font-weight: Typography.weight-semibold;
-                    color: Palette.text-primary;
+                if profile.description != "": Text {
+                    text: profile.description;
+                    font-size: Typography.size-xs;
+                    color: Palette.text-secondary;
+                    overflow: elide;
                 }
-            }
-            if profile.description != "": Text {
-                text: profile.description;
-                font-size: Typography.size-xs;
-                color: Palette.text-secondary;
-                overflow: elide;
             }
         }
         HorizontalLayout {
@@ -225,8 +228,5 @@ export component ProfileCard inherits Rectangle {
                 }
             }
         }
-    }
-    touch := TouchArea {
-        clicked => { root.clicked(); }
     }
 }

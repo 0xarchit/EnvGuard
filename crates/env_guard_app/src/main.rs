@@ -40,25 +40,26 @@ fn main() {
                     let mut lock = u_state.lock().await;
                     *lock = Some(controller);
                     let ctrl_ref = lock.as_ref().unwrap();
-                    let profiles_res = ctrl_ref.list_profiles().await;
+                    let mut slint_profs = Vec::new();
+                    if let Ok(profs) = ctrl_ref.list_profiles().await {
+                        for p in profs {
+                            let count = ctrl_ref.get_credentials_metadata(p.id).await.map(|c| c.len() as i32).unwrap_or(0);
+                            slint_profs.push(ProfileUiData {
+                                id: p.id.to_string().into(),
+                                name: p.name.into(),
+                                description: p.description.unwrap_or_default().into(),
+                                credential_count: count,
+                                is_active: p.is_active,
+                                session_count: 0,
+                            });
+                        }
+                    }
                     
                     u_handle.upgrade_in_event_loop(move |ui| {
                         ui.set_vault_locked(false);
                         ui.set_vault_initialized(true);
                         ui.set_error_message("".into());
-                        if let Ok(profs) = profiles_res {
-                            let slint_profs: Vec<ProfileUiData> = profs.into_iter().map(|p| {
-                                ProfileUiData {
-                                    id: p.id.to_string().into(),
-                                    name: p.name.into(),
-                                    description: p.description.unwrap_or_default().into(),
-                                    credential_count: 0,
-                                    is_active: p.is_active,
-                                    session_count: 0,
-                                }
-                            }).collect();
-                            ui.set_profiles(slint::ModelRc::new(slint::VecModel::from(slint_profs)));
-                        }
+                        ui.set_profiles(slint::ModelRc::new(slint::VecModel::from(slint_profs)));
                     }).expect("Event loop queue failed");
                 }
                 Err(e) => {
@@ -131,17 +132,19 @@ fn main() {
                 };
                 let _ = ctrl.create_profile(&name_str, Some(&desc_str), rules).await;
                 if let Ok(profs) = ctrl.list_profiles().await {
+                    let mut slint_profs = Vec::new();
+                    for p in profs {
+                        let count = ctrl.get_credentials_metadata(p.id).await.map(|c| c.len() as i32).unwrap_or(0);
+                        slint_profs.push(ProfileUiData {
+                            id: p.id.to_string().into(),
+                            name: p.name.into(),
+                            description: p.description.unwrap_or_default().into(),
+                            credential_count: count,
+                            is_active: p.is_active,
+                            session_count: 0,
+                        });
+                    }
                     cp_handle.upgrade_in_event_loop(move |ui| {
-                        let slint_profs: Vec<ProfileUiData> = profs.into_iter().map(|p| {
-                            ProfileUiData {
-                                id: p.id.to_string().into(),
-                                name: p.name.into(),
-                                description: p.description.unwrap_or_default().into(),
-                                credential_count: 0,
-                                is_active: p.is_active,
-                                session_count: 0,
-                            }
-                        }).collect();
                         ui.set_profiles(slint::ModelRc::new(slint::VecModel::from(slint_profs)));
                     }).expect("Event loop queue failed");
                 }
@@ -230,17 +233,19 @@ fn main() {
             if let Some(ctrl) = lock.as_ref() {
                 let _ = ctrl.delete_profile(id_uuid).await;
                 if let Ok(profs) = ctrl.list_profiles().await {
+                    let mut slint_profs = Vec::new();
+                    for p in profs {
+                        let count = ctrl.get_credentials_metadata(p.id).await.map(|c| c.len() as i32).unwrap_or(0);
+                        slint_profs.push(ProfileUiData {
+                            id: p.id.to_string().into(),
+                            name: p.name.into(),
+                            description: p.description.unwrap_or_default().into(),
+                            credential_count: count,
+                            is_active: p.is_active,
+                            session_count: 0,
+                        });
+                    }
                     dp_handle.upgrade_in_event_loop(move |ui| {
-                        let slint_profs: Vec<ProfileUiData> = profs.into_iter().map(|p| {
-                            ProfileUiData {
-                                id: p.id.to_string().into(),
-                                name: p.name.into(),
-                                description: p.description.unwrap_or_default().into(),
-                                credential_count: 0,
-                                is_active: p.is_active,
-                                session_count: 0,
-                            }
-                        }).collect();
                         ui.set_profiles(slint::ModelRc::new(slint::VecModel::from(slint_profs)));
                     }).expect("Event loop queue failed");
                 }
@@ -260,7 +265,22 @@ fn main() {
             let lock = ac_state.lock().await;
             if let Some(ctrl) = lock.as_ref() {
                 let _ = ctrl.add_credential(profile_uuid, &key_str, &val_str).await;
-                if let Ok(creds) = ctrl.get_credentials_metadata(profile_uuid).await {
+                let creds_res = ctrl.get_credentials_metadata(profile_uuid).await;
+                let mut slint_profs = Vec::new();
+                if let Ok(profs) = ctrl.list_profiles().await {
+                    for p in profs {
+                        let count = ctrl.get_credentials_metadata(p.id).await.map(|c| c.len() as i32).unwrap_or(0);
+                        slint_profs.push(ProfileUiData {
+                            id: p.id.to_string().into(),
+                            name: p.name.into(),
+                            description: p.description.unwrap_or_default().into(),
+                            credential_count: count,
+                            is_active: p.is_active,
+                            session_count: 0,
+                        });
+                    }
+                }
+                if let Ok(creds) = creds_res {
                     ac_handle.upgrade_in_event_loop(move |ui| {
                         let slint_creds: Vec<CredentialUiData> = creds.into_iter().map(|c| {
                             CredentialUiData {
@@ -271,6 +291,7 @@ fn main() {
                             }
                         }).collect();
                         ui.set_credentials(slint::ModelRc::new(slint::VecModel::from(slint_creds)));
+                        ui.set_profiles(slint::ModelRc::new(slint::VecModel::from(slint_profs)));
                     }).expect("Event loop queue failed");
                 }
             }
@@ -295,6 +316,20 @@ fn main() {
             let lock = dc_state.lock().await;
             if let Some(ctrl) = lock.as_ref() {
                 let _ = ctrl.delete_credential(id_uuid).await;
+                let mut slint_profs = Vec::new();
+                if let Ok(profs) = ctrl.list_profiles().await {
+                    for p in profs {
+                        let count = ctrl.get_credentials_metadata(p.id).await.map(|c| c.len() as i32).unwrap_or(0);
+                        slint_profs.push(ProfileUiData {
+                            id: p.id.to_string().into(),
+                            name: p.name.into(),
+                            description: p.description.unwrap_or_default().into(),
+                            credential_count: count,
+                            is_active: p.is_active,
+                            session_count: 0,
+                        });
+                    }
+                }
                 if !profile_uuid.is_nil() {
                     if let Ok(creds) = ctrl.get_credentials_metadata(profile_uuid).await {
                         let dc_handle_clone = dc_handle.clone();
@@ -309,6 +344,7 @@ fn main() {
                                     }
                                 }).collect();
                                 ui_ref.set_credentials(slint::ModelRc::new(slint::VecModel::from(slint_creds)));
+                                ui_ref.set_profiles(slint::ModelRc::new(slint::VecModel::from(slint_profs)));
                             }
                         });
                     }
