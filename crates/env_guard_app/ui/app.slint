@@ -1,11 +1,12 @@
 import { Palette, Typography, Tokens } from "theme.slint";
-import { PrimaryButton, SecondaryButton, DangerButton, InputField, PasswordField } from "components.slint";
+import { PrimaryButton, SecondaryButton, DangerButton, IconButton, InputField, PasswordField } from "components.slint";
 import { ProfileUiData, CredentialUiData, SessionUiData, Sidebar, UnlockView, ProfileCard } from "views.slint";
 
 export { ProfileUiData, CredentialUiData, SessionUiData }
 
 export component AppWindow inherits Window {
     title: "EnvGuard";
+    icon: @image-url("../icons/logo.png");
     min-width: 900px;
     min-height: 600px;
     preferred-width: 1100px;
@@ -13,6 +14,7 @@ export component AppWindow inherits Window {
     background: Palette.bg-base;
     in-out property <int> active-nav: 0;
     in-out property <bool> vault-locked: true;
+    in-out property <bool> vault-initialized: true;
     in-out property <string> error-message: "";
     in-out property <int> active-session-count: 0;
     in-out property <[ProfileUiData]> profiles: [];
@@ -48,6 +50,7 @@ export component AppWindow inherits Window {
 
     if vault-locked: UnlockView {
         error-text: root.error-message;
+        vault-initialized: root.vault-initialized;
         unlock(pw) => { root.unlock(pw); }
         reset-vault => { root.reset-vault(); }
     }
@@ -69,24 +72,23 @@ export component AppWindow inherits Window {
                 padding: Tokens.space-6;
                 spacing: Tokens.space-4;
                 alignment: start;
-                HorizontalLayout {
-                    alignment: space-between;
-                    Text {
-                        text: "Project Profiles";
-                        font-size: Typography.size-2xl;
-                        font-weight: Typography.weight-bold;
-                        color: Palette.text-primary;
-                    }
+                Text {
+                    text: "Project Profiles";
+                    font-size: Typography.size-xl;
+                    font-weight: Typography.weight-semibold;
+                    color: Palette.text-primary;
+                    height: 32px;
                 }
+                Rectangle { height: 1px; background: Palette.border-subtle; }
                 HorizontalLayout {
                     spacing: Tokens.space-3;
                     InputField {
-                        placeholder: "Profile name";
+                        placeholder: "Profile name (e.g. WebApp)";
                         value <=> root.new-profile-name;
                         width: 200px;
                     }
                     InputField {
-                        placeholder: "Description";
+                        placeholder: "Description (e.g. Dev keys)";
                         value <=> root.new-profile-desc;
                         width: 300px;
                     }
@@ -97,17 +99,17 @@ export component AppWindow inherits Window {
                             root.new-profile-name = "";
                             root.new-profile-desc = "";
                         }
-                        y: 28px;
+                        y: 10px;
                     }
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
                 if profiles.length == 0: Text {
-                    text: "No profiles created yet. Use the form above to add one.";
+                    text: "No project profiles found. Initialize one using the workspace bar above.";
                     font-size: Typography.size-base;
                     color: Palette.text-secondary;
                 }
                 VerticalLayout {
-                    spacing: Tokens.space-4;
+                    spacing: Tokens.space-3;
                     for p in profiles: ProfileCard {
                         profile: p;
                         clicked => {
@@ -120,7 +122,6 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-
             }
             if active-nav == 0 && selected-profile-id != "": VerticalLayout {
                 padding: Tokens.space-6;
@@ -128,31 +129,26 @@ export component AppWindow inherits Window {
                 alignment: start;
                 HorizontalLayout {
                     spacing: Tokens.space-4;
+                    alignment: start;
                     SecondaryButton {
-                        text: "<- Back";
+                        text: "← Profiles";
                         clicked => { root.selected-profile-id = ""; }
                     }
                     Text {
-                        text: "Profile: " + root.selected-profile-name;
-                        font-size: Typography.size-2xl;
-                        font-weight: Typography.weight-bold;
+                        text: "Workspace: " + root.selected-profile-name;
+                        font-size: Typography.size-xl;
+                        font-weight: Typography.weight-semibold;
                         color: Palette.text-primary;
-                    }
-                    DangerButton {
-                        text: "Delete Profile";
-                        clicked => {
-                            root.delete-profile(root.selected-profile-id);
-                            root.selected-profile-id = "";
-                        }
+                        y: 2px;
                     }
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
                 HorizontalLayout {
                     spacing: Tokens.space-3;
                     InputField {
-                        placeholder: "Timeout (secs, e.g. 3600)";
+                        placeholder: "Timeout (seconds)";
                         value <=> root.session-timeout;
-                        width: 200px;
+                        width: 150px;
                     }
                     InputField {
                         placeholder: "Allowed Shells (e.g. Cmd, Bash)";
@@ -164,7 +160,7 @@ export component AppWindow inherits Window {
                         clicked => {
                             root.save-profile-rules(root.selected-profile-id, root.session-timeout, root.allowed-shells);
                         }
-                        y: 28px;
+                        y: 10px;
                     }
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
@@ -173,67 +169,96 @@ export component AppWindow inherits Window {
                     InputField {
                         placeholder: "Key (e.g. API_KEY)";
                         value <=> root.new-cred-key;
-                        width: 200px;
+                        width: 180px;
                     }
                     InputField {
                         placeholder: "Value";
                         value <=> root.new-cred-val;
-                        width: 300px;
+                        width: 240px;
                     }
                     PrimaryButton {
-                        text: "Add Credential";
+                        text: "Add Secret";
                         clicked => {
                             root.add-credential(root.selected-profile-id, root.new-cred-key, root.new-cred-val);
                             root.new-cred-key = "";
                             root.new-cred-val = "";
                         }
-                        y: 28px;
+                        y: 10px;
                     }
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
                 if credentials.length == 0: Text {
-                    text: "No credentials in this profile yet. Add one above.";
+                    text: "No credentials registered inside this workspace yet.";
                     font-size: Typography.size-base;
                     color: Palette.text-secondary;
                 }
-                for c in credentials: HorizontalLayout {
-                    height: 48px;
-                    alignment: start;
-                    spacing: Tokens.space-4;
-                    Text {
-                        text: c.key;
-                        font-size: Typography.size-base;
-                        font-weight: Typography.weight-bold;
-                        color: Palette.text-primary;
-                        width: 200px;
-                    }
-                    Text {
-                        text: c.value-revealed ? c.value-plaintext : "••••••••••••";
-                        font-size: Typography.size-base;
-                        color: Palette.text-secondary;
-                        width: 200px;
-                    }
-                    SecondaryButton {
-                        text: c.value-revealed ? "Hide" : "Reveal";
-                        clicked => {
-                            if (!c.value-revealed) {
-                                c.value-plaintext = root.decrypt-credential(c.id);
-                            } else {
-                                c.value-plaintext = "";
+                VerticalLayout {
+                    spacing: Tokens.space-2;
+                    for c in credentials: Rectangle {
+                        height: 38px;
+                        background: Palette.bg-surface;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: Palette.border-default;
+                        HorizontalLayout {
+                            padding-left: Tokens.space-4;
+                            padding-right: Tokens.space-4;
+                            spacing: Tokens.space-4;
+                            alignment: space-between;
+                            Text {
+                                text: c.key;
+                                font-size: Typography.size-base;
+                                font-weight: Typography.weight-semibold;
+                                color: Palette.text-primary;
+                                width: 220px;
+                                y: (parent.height - self.height) / 2;
                             }
-                            c.value-revealed = !c.value-revealed;
+                            Text {
+                                text: c.value-revealed ? c.value-plaintext : "••••••••••••";
+                                font-size: Typography.size-base;
+                                color: Palette.text-secondary;
+                                width: 250px;
+                                y: (parent.height - self.height) / 2;
+                            }
+                            HorizontalLayout {
+                                spacing: Tokens.space-2;
+                                alignment: end;
+                                VerticalLayout {
+                                    alignment: center;
+                                    SecondaryButton {
+                                        text: c.value-revealed ? "Hide" : "Reveal";
+                                        clicked => {
+                                            if (!c.value-revealed) {
+                                                c.value-plaintext = root.decrypt-credential(c.id);
+                                            } else {
+                                                c.value-plaintext = "";
+                                            }
+                                            c.value-revealed = !c.value-revealed;
+                                        }
+                                        height: 24px;
+                                        min-width: 64px;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    SecondaryButton {
+                                        text: "Copy";
+                                        clicked => { root.copy-to-clipboard(c.id); }
+                                        height: 24px;
+                                        min-width: 54px;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    DangerButton {
+                                        text: "Delete";
+                                        clicked => { root.delete-credential(c.id); }
+                                        height: 24px;
+                                        min-width: 54px;
+                                    }
+                                }
+                            }
                         }
-                        height: 28px;
-                    }
-                    SecondaryButton {
-                        text: "Copy";
-                        clicked => { root.copy-to-clipboard(c.id); }
-                        height: 28px;
-                    }
-                    DangerButton {
-                        text: "Delete";
-                        clicked => { root.delete-credential(c.id); }
-                        height: 28px;
                     }
                 }
             }
@@ -243,43 +268,66 @@ export component AppWindow inherits Window {
                 alignment: start;
                 Text {
                     text: "Active Runtime Sessions";
-                    font-size: Typography.size-2xl;
-                    font-weight: Typography.weight-bold;
+                    font-size: Typography.size-xl;
+                    font-weight: Typography.weight-semibold;
                     color: Palette.text-primary;
+                    height: 32px;
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
                 if active-sessions.length == 0: Text {
-                    text: "No shell sessions currently active. Start one from the Profiles grid.";
+                    text: "No active terminal sessions. Launch one from the Profiles tab.";
                     font-size: Typography.size-base;
                     color: Palette.text-secondary;
                 }
-                for s in active-sessions: HorizontalLayout {
-                    height: 48px;
-                    alignment: start;
-                    spacing: Tokens.space-4;
-                    Text {
-                        text: s.profile-name;
-                        font-size: Typography.size-base;
-                        font-weight: Typography.weight-bold;
-                        color: Palette.text-primary;
-                        width: 200px;
-                    }
-                    Text {
-                        text: "PID: " + s.pid;
-                        font-size: Typography.size-base;
-                        color: Palette.text-secondary;
-                        width: 100px;
-                    }
-                    Text {
-                        text: s.started-at;
-                        font-size: Typography.size-base;
-                        color: Palette.text-muted;
-                        width: 200px;
-                    }
-                    DangerButton {
-                        text: "Stop Session";
-                        clicked => { root.stop-session(s.id); }
-                        height: 28px;
+                VerticalLayout {
+                    spacing: Tokens.space-2;
+                    for s in active-sessions: Rectangle {
+                        height: 48px;
+                        background: Palette.bg-surface;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: Palette.border-default;
+                        HorizontalLayout {
+                            padding-left: Tokens.space-4;
+                            padding-right: Tokens.space-4;
+                            spacing: Tokens.space-4;
+                            alignment: space-between;
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: s.shell;
+                                    font-size: Typography.size-base;
+                                    font-weight: Typography.weight-semibold;
+                                    color: Palette.text-primary;
+                                }
+                                Text {
+                                    text: "Started: " + s.started-at;
+                                    font-size: Typography.size-xs;
+                                    color: Palette.text-secondary;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                Text {
+                                    text: "PID: " + s.pid;
+                                    font-size: Typography.size-sm;
+                                    color: Palette.text-secondary;
+                                }
+                                Text {
+                                    text: s.expires-at != "" ? "Expires: " + s.expires-at : "Persistent Session";
+                                    font-size: Typography.size-xs;
+                                    color: Palette.text-muted;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                DangerButton {
+                                    text: "Terminate";
+                                    clicked => { root.stop-session(s.id); }
+                                    height: 24px;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -288,35 +336,52 @@ export component AppWindow inherits Window {
                 spacing: Tokens.space-4;
                 alignment: start;
                 Text {
-                    text: ".env File Scanner";
-                    font-size: Typography.size-2xl;
-                    font-weight: Typography.weight-bold;
+                    text: ".env Scanner";
+                    font-size: Typography.size-xl;
+                    font-weight: Typography.weight-semibold;
                     color: Palette.text-primary;
+                    height: 32px;
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
                 HorizontalLayout {
                     spacing: Tokens.space-3;
                     InputField {
-                        placeholder: "Directory absolute path";
+                        placeholder: "Absolute workspace path";
                         value <=> root.scan-directory;
                         width: 400px;
                     }
                     PrimaryButton {
                         text: "Scan Directory";
                         clicked => { root.scan-env-files(root.scan-directory); }
-                        y: 28px;
+                        y: 10px;
                     }
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
                 if scanned-env-files.length == 0: Text {
-                    text: "No .env files detected or scanned yet.";
+                    text: "Specify a local directory path to scan for insecure dot-env variables.";
                     font-size: Typography.size-base;
                     color: Palette.text-secondary;
                 }
-                for path in scanned-env-files: Text {
-                    text: "Warning: Plaintext env file found at: " + path;
-                    font-size: Typography.size-base;
-                    color: Palette.danger;
+                VerticalLayout {
+                    spacing: Tokens.space-2;
+                    for f in scanned-env-files: Rectangle {
+                        height: 38px;
+                        background: Palette.bg-surface;
+                        border-radius: 4px;
+                        border-width: 1px;
+                        border-color: Palette.border-default;
+                        HorizontalLayout {
+                            padding-left: Tokens.space-4;
+                            padding-right: Tokens.space-4;
+                            alignment: space-between;
+                            Text {
+                                text: f;
+                                font-size: Typography.size-sm;
+                                color: Palette.text-secondary;
+                                y: (parent.height - self.height) / 2;
+                            }
+                        }
+                    }
                 }
             }
             if active-nav == 3: VerticalLayout {
@@ -324,27 +389,31 @@ export component AppWindow inherits Window {
                 spacing: Tokens.space-4;
                 alignment: start;
                 Text {
-                    text: "Settings & System Diagnostics";
-                    font-size: Typography.size-2xl;
-                    font-weight: Typography.weight-bold;
+                    text: "System Settings";
+                    font-size: Typography.size-xl;
+                    font-weight: Typography.weight-semibold;
                     color: Palette.text-primary;
+                    height: 32px;
                 }
                 Rectangle { height: 1px; background: Palette.border-subtle; }
-                Text {
-                    text: "EnvGuard v0.1.0";
-                    font-size: Typography.size-base;
-                    font-weight: Typography.weight-bold;
-                    color: Palette.text-primary;
-                }
-                Text {
-                    text: "Operating System Native Secrets Engine (Zero-Plaintext Model)";
-                    font-size: Typography.size-sm;
-                    color: Palette.text-secondary;
-                }
-                Text {
-                    text: "Static linking: SQLCipher transparent database-at-rest encryption verified.";
-                    font-size: Typography.size-sm;
-                    color: Palette.success;
+                VerticalLayout {
+                    spacing: Tokens.space-2;
+                    Text {
+                        text: "Vault Storage Engine";
+                        font-size: Typography.size-base;
+                        font-weight: Typography.weight-semibold;
+                        color: Palette.text-primary;
+                    }
+                    Text {
+                        text: "Engine: SQLCipher (AES-256-GCM page-encrypted SQLite database)";
+                        font-size: Typography.size-sm;
+                        color: Palette.text-secondary;
+                    }
+                    Text {
+                        text: "Key Hashing KDF: Argon2id (m_cost=65536, t_cost=3, p_cost=4)";
+                        font-size: Typography.size-sm;
+                        color: Palette.text-secondary;
+                    }
                 }
             }
         }

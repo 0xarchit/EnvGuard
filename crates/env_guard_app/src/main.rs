@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 slint::include_modules!();
 
 use std::sync::Arc;
@@ -14,8 +15,13 @@ fn main() {
         .enable_all()
         .build()
         .expect("Failed to create Tokio runtime");
+    let _guard = runtime.enter();
 
     let controller_state = Arc::new(Mutex::new(None));
+
+    let init_base_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+    let init_db_path = init_base_dir.join("EnvGuard").join("vault.db");
+    ui.set_vault_initialized(init_db_path.exists());
 
     let u_state = Arc::clone(&controller_state);
     let u_handle = ui_handle.clone();
@@ -38,6 +44,7 @@ fn main() {
                     
                     u_handle.upgrade_in_event_loop(move |ui| {
                         ui.set_vault_locked(false);
+                        ui.set_vault_initialized(true);
                         ui.set_error_message("".into());
                         if let Ok(profs) = profiles_res {
                             let slint_profs: Vec<ProfileUiData> = profs.into_iter().map(|p| {
@@ -101,6 +108,7 @@ fn main() {
             let _ = std::fs::remove_file(&db_path);
             let _ = std::fs::remove_file(&salt_path);
             let _ = rv_handle.upgrade_in_event_loop(move |ui| {
+                ui.set_vault_initialized(false);
                 ui.set_error_message("Vault wiped successfully. Enter a new password to initialize a new vault.".into());
             });
         });
