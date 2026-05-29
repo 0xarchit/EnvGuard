@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::{SqlitePool, Row};
 use portable_pty::{native_pty_system, PtySize, CommandBuilder};
 use crate::env_guard::models::{Profile, PlaintextCredential, RuntimeSession, ShellType, SessionStatus};
 use crate::env_guard::errors::SessionError;
@@ -114,6 +116,7 @@ pub async fn spawn_session(
     credentials: Vec<PlaintextCredential>,
     shell: ShellType,
     pool: &SqlitePool,
+    active_sessions: Option<Arc<Mutex<HashMap<Uuid, RuntimeSession>>>>,
 ) -> Result<RuntimeSession, SessionError> {
     let shell_path = resolve_shell_path(&shell)?;
     let whitelist = [
@@ -125,6 +128,11 @@ pub async fn spawn_session(
         "SystemRoot",
         "SystemDrive",
         "COMSPEC",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "LANG",
+        "LC_ALL",
     ];
 
     let mut envs = HashMap::new();
@@ -138,29 +146,43 @@ pub async fn spawn_session(
     }
 
     let pty_system = native_pty_system();
-    let pair = pty_system
-        .openpty(PtySize {
-            rows: 24,
-            cols: 80,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|e| SessionError::PtyError(e.to_string()))?;
+    let pair_opt = pty_system.openpty(PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    });
 
-    let mut cmd = CommandBuilder::new(&shell_path);
-    for (key, _) in std::env::vars() {
-        cmd.env_remove(key);
-    }
-    for (key, val) in envs {
-        cmd.env(key, val);
-    }
+    let (pid, child_waiter) = match pair_opt {
+        Ok(pair) => {
+            let mut cmd = CommandBuilder::new(&shell_path);
+            for (key, _) in std::env::vars() {
+                cmd.env_remove(key);
+            }
+            for (key, val) in envs {
+                cmd.env(key, val);
+            }
+            let mut child = pair
+                .slave
+                .spawn_command(cmd)
+                .map_err(|e| SessionError::PtyError(e.to_string()))?;
+            let pid = child.process_id();
+            let waiter: Box<dyn FnOnce() -> Result<std::process::ExitStatus, std::io::Error> + Send + 'static> = Box::new(move || child.wait());
+            (pid, waiter)
+        }
+        Err(_) => {
+            let mut cmd = std::process::Command::new(&shell_path);
+            cmd.env_clear();
+            for (key, val) in envs {
+                cmd.env(key, val);
+            }
+            let mut child = cmd.spawn().map_err(|e| SessionError::Io(e))?;
+            let pid = child.id();
+            let waiter: Box<dyn FnOnce() -> Result<std::process::ExitStatus, std::io::Error> + Send + 'static> = Box::new(move || child.wait());
+            (Some(pid), waiter)
+        }
+    };
 
-    let mut child = pair
-        .slave
-        .spawn_command(cmd)
-        .map_err(|e| SessionError::PtyError(e.to_string()))?;
-
-    let pid = child.process_id();
     let session_id = Uuid::new_v4();
     let started_at = Utc::now();
     let expires_at = profile
@@ -182,36 +204,51 @@ pub async fn spawn_session(
         .await
         .map_err(|e| SessionError::PtyError(e.to_string()))?;
 
+    sqlx::query("UPDATE profiles SET is_active = 1 WHERE id = ?")
+        .bind(profile.id.to_string())
+        .execute(pool)
+        .await
+        .map_err(|e| SessionError::PtyError(e.to_string()))?;
+
     let pool_clone = pool.clone();
     let expires_at_clone = expires_at;
+    let profile_id_clone = profile.id;
+    let active_sessions_clone = active_sessions.clone();
     tokio::spawn(async move {
-        let mut exit_fut = tokio::task::spawn_blocking(move || child.wait());
-        if let Some(expires) = expires_at_clone {
+        let mut exit_fut = tokio::task::spawn_blocking(move || child_waiter());
+        let final_status = if let Some(expires) = expires_at_clone {
             let dur = (expires - Utc::now()).to_std().unwrap_or(std::time::Duration::from_secs(0));
             tokio::select! {
                 res = &mut exit_fut => {
-                    let final_status = match res {
+                    match res {
                         Ok(Ok(status)) if status.success() => SessionStatus::Terminated,
                         Ok(Ok(status)) => SessionStatus::Failed(format!("Exit code: {:?}", status)),
                         _ => SessionStatus::Failed("Process exited abnormally".to_string()),
-                    };
-                    let _ = storage::update_session_status(&pool_clone, session_id, final_status).await;
+                    }
                 }
                 _ = tokio::time::sleep(dur) => {
                     if let Some(p) = pid {
                         let _ = kill_process(p).await;
                     }
-                    let _ = storage::update_session_status(&pool_clone, session_id, SessionStatus::Expired).await;
+                    SessionStatus::Expired
                 }
             }
         } else {
             let res = exit_fut.await;
-            let final_status = match res {
+            match res {
                 Ok(Ok(status)) if status.success() => SessionStatus::Terminated,
                 Ok(Ok(status)) => SessionStatus::Failed(format!("Exit code: {:?}", status)),
                 _ => SessionStatus::Failed("Process exited abnormally".to_string()),
-            };
-            let _ = storage::update_session_status(&pool_clone, session_id, final_status).await;
+            }
+        };
+        let _ = storage::update_session_status(&pool_clone, session_id, final_status).await;
+        let _ = sqlx::query("UPDATE profiles SET is_active = 0 WHERE id = ?")
+            .bind(profile_id_clone.to_string())
+            .execute(&pool_clone)
+            .await;
+        if let Some(active_map) = active_sessions_clone {
+            let mut map = active_map.lock().await;
+            map.remove(&session_id);
         }
     });
 
@@ -222,12 +259,34 @@ pub async fn terminate_session(
     session_id: Uuid,
     pool: &SqlitePool,
 ) -> Result<(), SessionError> {
-    sqlx::query("UPDATE sessions SET status = ? WHERE id = ?")
-        .bind(serde_json::to_string(&SessionStatus::Terminated).unwrap())
+    let row = sqlx::query("SELECT profile_id, pid FROM sessions WHERE id = ?")
         .bind(session_id.to_string())
-        .execute(pool)
+        .fetch_optional(pool)
         .await
         .map_err(|e| SessionError::PtyError(e.to_string()))?;
+
+    if let Some(r) = row {
+        let profile_id_str: String = r.get(0);
+        let pid_opt: Option<i64> = r.get(1);
+
+        if let Some(pid) = pid_opt {
+            let _ = kill_process(pid as u32).await;
+        }
+
+        sqlx::query("UPDATE sessions SET status = ? WHERE id = ?")
+            .bind(serde_json::to_string(&SessionStatus::Terminated).unwrap())
+            .bind(session_id.to_string())
+            .execute(pool)
+            .await
+            .map_err(|e| SessionError::PtyError(e.to_string()))?;
+
+        sqlx::query("UPDATE profiles SET is_active = 0 WHERE id = ?")
+            .bind(profile_id_str)
+            .execute(pool)
+            .await
+            .map_err(|e| SessionError::PtyError(e.to_string()))?;
+    }
+
     Ok(())
 }
 
@@ -243,6 +302,10 @@ pub async fn check_session_expiration(
             storage::update_session_status(pool, session.id, SessionStatus::Expired)
                 .await
                 .map_err(|e| SessionError::PtyError(e.to_string()))?;
+            let _ = sqlx::query("UPDATE profiles SET is_active = 0 WHERE id = ?")
+                .bind(session.profile_id.to_string())
+                .execute(pool)
+                .await;
             return Ok(true);
         }
     }

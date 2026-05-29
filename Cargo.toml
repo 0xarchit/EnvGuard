@@ -4,3 +4,13 @@ members = [
     "crates/env_guard_app"
 ]
 resolver = "2"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+incremental = false
+debug = false
+overflow-checks = false

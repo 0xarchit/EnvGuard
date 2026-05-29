@@ -64,28 +64,6 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
     Ok(pool)
 }
 
-pub async fn get_vault_salt(pool: &SqlitePool) -> Result<Option<[u8; 16]>, StorageError> {
-    let row = sqlx::query("SELECT salt FROM vault_meta LIMIT 1")
-        .fetch_optional(pool)
-        .await?;
-    if let Some(r) = row {
-        let salt_bytes: Vec<u8> = r.get(0);
-        let mut salt = [0u8; 16];
-        salt.copy_from_slice(&salt_bytes);
-        Ok(Some(salt))
-    } else {
-        Ok(None)
-    }
-}
-
-pub async fn store_vault_salt(pool: &SqlitePool, salt: &[u8; 16]) -> Result<(), StorageError> {
-    sqlx::query("INSERT INTO vault_meta (id, salt, created_at) VALUES (1, ?, ?)")
-        .bind(salt.as_slice())
-        .bind(Utc::now().to_rfc3339())
-        .execute(pool)
-        .await?;
-    Ok(())
-}
 
 pub async fn store_profile(pool: &SqlitePool, profile: &Profile) -> Result<(), StorageError> {
     let rules_str = serde_json::to_string(&profile.session_rules)?;

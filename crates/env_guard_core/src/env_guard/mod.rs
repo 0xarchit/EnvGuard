@@ -18,39 +18,24 @@ use crate::env_guard::errors::ControllerError;
 
 #[allow(non_camel_case_types)]
 pub struct envGuard {
-    pub pool: SqlitePool,
-    pub master_key: Zeroizing<[u8; 32]>,
-    pub active_sessions: Arc<Mutex<HashMap<Uuid, RuntimeSession>>>,
+    pub(crate) pool: SqlitePool,
+    pub(crate) master_key: Zeroizing<[u8; 32]>,
+    pub(crate) active_sessions: Arc<Mutex<HashMap<Uuid, RuntimeSession>>>,
 }
 
 #[allow(non_camel_case_types)]
 impl envGuard {
     pub async fn unlock(db_path: &Path, password: &str) -> Result<Self, ControllerError> {
-        let temp_options = sqlx::sqlite::SqliteConnectOptions::new()
-            .filename(db_path)
-            .create_if_missing(true);
-        let temp_pool = SqlitePool::connect_with(temp_options).await
-            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e)))?;
-
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS vault_meta (
-                id INTEGER PRIMARY KEY,
-                salt BLOB NOT NULL,
-                created_at TEXT NOT NULL
-            );"
-        ).execute(&temp_pool).await
-            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e)))?;
-
-        let salt_opt = storage::get_vault_salt(&temp_pool).await?;
-        let salt = match salt_opt {
-            Some(s) => s,
-            None => {
-                let s = crypto::generate_vault_salt();
-                storage::store_vault_salt(&temp_pool, &s).await?;
-                s
-            }
+        let salt_path = db_path.with_extension("salt");
+        let salt = if salt_path.exists() {
+            std::fs::read(&salt_path)
+                .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?
+        } else {
+            let s = crypto::generate_vault_salt();
+            std::fs::write(&salt_path, &s)
+                .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?;
+            s.to_vec()
         };
-        temp_pool.close().await;
 
         let master_secret = crypto::derive_master_key(password, &salt)?;
         let (db_key, master_key) = crypto::derive_split_keys(&master_secret)?;
@@ -204,8 +189,11 @@ impl envGuard {
             Some(p) => p,
             None => return Err(ControllerError::Storage(crate::env_guard::errors::StorageError::ProfileNotFound(profile_id))),
         };
+        if !profile.session_rules.allowed_shells.is_empty() && !profile.session_rules.allowed_shells.contains(&shell) {
+            return Err(ControllerError::Session(crate::env_guard::errors::SessionError::ShellNotFound(format!("{:?}", shell))));
+        }
         let decrypted_creds = self.get_decrypted_credentials(profile_id).await?;
-        let session = session::spawn_session(&profile, decrypted_creds, shell, &self.pool).await
+        let session = session::spawn_session(&profile, decrypted_creds, shell, &self.pool, Some(self.active_sessions.clone())).await
             .map_err(|e| ControllerError::Session(e))?;
         
         let mut sessions = self.active_sessions.lock().await;
@@ -231,33 +219,37 @@ impl envGuard {
     }
 
     pub async fn scan_for_env_files(&self, directory: &Path) -> Result<Vec<PathBuf>, ControllerError> {
-        let mut results = Vec::new();
-        fn scan_dir_recursive(dir: &Path, results: &mut Vec<PathBuf>) -> std::io::Result<()> {
-            if dir.is_dir() {
-                for entry in std::fs::read_dir(dir)? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if path.is_dir() {
-                        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                            if name == "target" || name == ".git" || name == "node_modules" {
-                                continue;
+        let dir = directory.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            let mut results = Vec::new();
+            fn scan_dir_recursive(dir: &Path, results: &mut Vec<PathBuf>) -> std::io::Result<()> {
+                if dir.is_dir() {
+                    for entry in std::fs::read_dir(dir)? {
+                        let entry = entry?;
+                        let path = entry.path();
+                        if path.is_dir() {
+                            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                                if name == "target" || name == ".git" || name == "node_modules" {
+                                    continue;
+                                }
                             }
-                        }
-                        let _ = scan_dir_recursive(&path, results);
-                    } else if path.is_file() {
-                        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                            if name.starts_with(".env") || name.ends_with(".env") {
-                                results.push(path);
+                            let _ = scan_dir_recursive(&path, results);
+                        } else if path.is_file() {
+                            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                                if name.starts_with(".env") || name.ends_with(".env") {
+                                    results.push(path);
+                                }
                             }
                         }
                     }
                 }
+                Ok(())
             }
-            Ok(())
-        }
-        scan_dir_recursive(directory, &mut results)
-            .map_err(|e| ControllerError::Session(crate::env_guard::errors::SessionError::Io(e)))?;
-        Ok(results)
+            scan_dir_recursive(&dir, &mut results)?;
+            Ok(results)
+        }).await
+        .map_err(|_| ControllerError::Session(crate::env_guard::errors::SessionError::PtyError("Scan thread panicked".to_string())))?
+        .map_err(|e| ControllerError::Session(crate::env_guard::errors::SessionError::Io(e)))
     }
 
     pub fn contains_secret_leak(
@@ -330,7 +322,7 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
         
-        let active = controller.get_decrypted_credentials(profile.id).await.unwrap();
+        let active = controller.list_active_sessions().await;
         assert_eq!(active.len(), 0);
     }
 }

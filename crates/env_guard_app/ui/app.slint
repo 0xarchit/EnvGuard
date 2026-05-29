@@ -482,6 +482,7 @@ export component AppWindow inherits Window {
     callback delete-profile(string);
     callback add-credential(string, string, string);
     callback delete-credential(string);
+    callback copy-to-clipboard(string);
     callback start-session(string);
     callback stop-session(string);
     callback scan-env-files(string);
@@ -629,7 +630,17 @@ export component AppWindow inherits Window {
                         text: c.value-revealed ? c.value-plaintext : "••••••••••••";
                         font-size: Typography.size-base;
                         color: Palette.text-secondary;
-                        width: 300px;
+                        width: 200px;
+                    }
+                    SecondaryButton {
+                        text: c.value-revealed ? "Hide" : "Reveal";
+                        clicked => { c.value-revealed = !c.value-revealed; }
+                        height: 28px;
+                    }
+                    SecondaryButton {
+                        text: "Copy";
+                        clicked => { root.copy-to-clipboard(c.value-plaintext); }
+                        height: 28px;
                     }
                     DangerButton {
                         text: "Delete";

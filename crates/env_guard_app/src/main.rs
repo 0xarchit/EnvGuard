@@ -133,7 +133,7 @@ fn main() {
                             CredentialUiData {
                                 id: c.id.to_string().into(),
                                 key: c.key.into(),
-                                value_revealed: true,
+                                value_revealed: false,
                                 value_plaintext: (*c.value).clone().into(),
                             }
                         }).collect();
@@ -191,7 +191,7 @@ fn main() {
                             CredentialUiData {
                                 id: c.id.to_string().into(),
                                 key: c.key.into(),
-                                value_revealed: true,
+                                value_revealed: false,
                                 value_plaintext: (*c.value).clone().into(),
                             }
                         }).collect();
@@ -229,7 +229,7 @@ fn main() {
                                     CredentialUiData {
                                         id: c.id.to_string().into(),
                                         key: c.key.into(),
-                                        value_revealed: true,
+                                        value_revealed: false,
                                         value_plaintext: (*c.value).clone().into(),
                                     }
                                 }).collect();
@@ -322,6 +322,14 @@ fn main() {
                 }
             }
         });
+    });
+
+    let cp_clip_handle = ui_handle.clone();
+    ui.on_copy_to_clipboard(move |text| {
+        let text_str = text.to_string();
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(text_str);
+        }
     });
 
     let _timer_state = Arc::clone(&controller_state);

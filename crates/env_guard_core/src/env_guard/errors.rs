@@ -26,6 +26,8 @@ pub enum StorageError {
     ProfileNotFound(Uuid),
     #[error("Credential not found: {0}")]
     CredentialNotFound(Uuid),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 #[derive(Debug, thiserror::Error)]
