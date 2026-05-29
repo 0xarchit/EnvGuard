@@ -333,6 +333,66 @@ pub async fn get_active_session(
     }
 }
 
+pub async fn get_credential_metadata(
+    pool: &SqlitePool,
+    id: Uuid,
+) -> Result<Option<(Uuid, String, DateTime<Utc>, Vec<String>)>, StorageError> {
+    let row = sqlx::query("SELECT profile_id, key, created_at, tags FROM credentials WHERE id = ?")
+        .bind(id.to_string())
+        .fetch_optional(pool)
+        .await?;
+    if let Some(r) = row {
+        let profile_id_str: String = r.get(0);
+        let key: String = r.get(1);
+        let created_str: String = r.get(2);
+        let tags_str: String = r.get(3);
+
+        let profile_id = Uuid::parse_str(&profile_id_str)
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
+            .with_timezone(&Utc);
+        let tags: Vec<String> = serde_json::from_str(&tags_str)
+            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+
+        Ok(Some((profile_id, key, created_at, tags)))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn update_profile_active_status(
+    pool: &SqlitePool,
+    profile_id: Uuid,
+    is_active: bool,
+) -> Result<(), StorageError> {
+    sqlx::query("UPDATE profiles SET is_active = ? WHERE id = ?")
+        .bind(if is_active { 1 } else { 0 })
+        .bind(profile_id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn get_session_profile_and_pid(
+    pool: &SqlitePool,
+    session_id: Uuid,
+) -> Result<Option<(Uuid, Option<i64>)>, StorageError> {
+    let row = sqlx::query("SELECT profile_id, pid FROM sessions WHERE id = ?")
+        .bind(session_id.to_string())
+        .fetch_optional(pool)
+        .await?;
+    if let Some(r) = row {
+        let profile_id_str: String = r.get(0);
+        let pid: Option<i64> = r.get(1);
+        let profile_id = Uuid::parse_str(&profile_id_str)
+            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        Ok(Some((profile_id, pid)))
+    } else {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

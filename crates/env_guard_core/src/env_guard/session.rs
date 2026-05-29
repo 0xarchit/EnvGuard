@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 use chrono::Utc;
-use sqlx::{SqlitePool, Row};
+use sqlx::SqlitePool;
 use portable_pty::{native_pty_system, PtySize, CommandBuilder};
 use crate::env_guard::models::{Profile, PlaintextCredential, RuntimeSession, ShellType, SessionStatus};
 use crate::env_guard::errors::SessionError;
@@ -221,9 +221,7 @@ pub async fn spawn_session(
         .await
         .map_err(|e| SessionError::PtyError(e.to_string()))?;
 
-    sqlx::query("UPDATE profiles SET is_active = 1 WHERE id = ?")
-        .bind(profile.id.to_string())
-        .execute(pool)
+    storage::update_profile_active_status(pool, profile.id, true)
         .await
         .map_err(|e| SessionError::PtyError(e.to_string()))?;
 
@@ -259,10 +257,7 @@ pub async fn spawn_session(
             }
         };
         let _ = storage::update_session_status(&pool_clone, session_id, final_status).await;
-        let _ = sqlx::query("UPDATE profiles SET is_active = 0 WHERE id = ?")
-            .bind(profile_id_clone.to_string())
-            .execute(&pool_clone)
-            .await;
+        let _ = storage::update_profile_active_status(&pool_clone, profile_id_clone, false).await;
         if let Some(active_map) = active_sessions_clone {
             let mut map = active_map.lock().await;
             map.remove(&session_id);
@@ -276,30 +271,20 @@ pub async fn terminate_session(
     session_id: Uuid,
     pool: &SqlitePool,
 ) -> Result<(), SessionError> {
-    let row = sqlx::query("SELECT profile_id, pid FROM sessions WHERE id = ?")
-        .bind(session_id.to_string())
-        .fetch_optional(pool)
+    let session_opt = storage::get_session_profile_and_pid(pool, session_id)
         .await
         .map_err(|e| SessionError::PtyError(e.to_string()))?;
 
-    if let Some(r) = row {
-        let profile_id_str: String = r.get(0);
-        let pid_opt: Option<i64> = r.get(1);
-
+    if let Some((profile_id, pid_opt)) = session_opt {
         if let Some(pid) = pid_opt {
             let _ = kill_process(pid as u32).await;
         }
 
-        sqlx::query("UPDATE sessions SET status = ? WHERE id = ?")
-            .bind(serde_json::to_string(&SessionStatus::Terminated).unwrap())
-            .bind(session_id.to_string())
-            .execute(pool)
+        storage::update_session_status(pool, session_id, SessionStatus::Terminated)
             .await
             .map_err(|e| SessionError::PtyError(e.to_string()))?;
 
-        sqlx::query("UPDATE profiles SET is_active = 0 WHERE id = ?")
-            .bind(profile_id_str)
-            .execute(pool)
+        storage::update_profile_active_status(pool, profile_id, false)
             .await
             .map_err(|e| SessionError::PtyError(e.to_string()))?;
     }
@@ -319,10 +304,7 @@ pub async fn check_session_expiration(
             storage::update_session_status(pool, session.id, SessionStatus::Expired)
                 .await
                 .map_err(|e| SessionError::PtyError(e.to_string()))?;
-            let _ = sqlx::query("UPDATE profiles SET is_active = 0 WHERE id = ?")
-                .bind(session.profile_id.to_string())
-                .execute(pool)
-                .await;
+            let _ = storage::update_profile_active_status(pool, session.profile_id, false).await;
             return Ok(true);
         }
     }

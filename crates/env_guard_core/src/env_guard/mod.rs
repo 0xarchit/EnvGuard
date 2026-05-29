@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 use chrono::Utc;
-use sqlx::{SqlitePool, Row};
+use sqlx::SqlitePool;
 use zeroize::Zeroizing;
 
 use crate::env_guard::models::{Profile, Credential, PlaintextCredential, SessionRules, ShellType, RuntimeSession};
@@ -141,26 +141,9 @@ impl envGuard {
         credential_id: Uuid,
         new_value: &str,
     ) -> Result<(), ControllerError> {
-        let row = sqlx::query("SELECT profile_id, key, created_at, tags FROM credentials WHERE id = ?")
-            .bind(credential_id.to_string())
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e)))?;
+        let meta_opt = storage::get_credential_metadata(&self.pool, credential_id).await?;
 
-        if let Some(r) = row {
-            let profile_id_str: String = r.get(0);
-            let key: String = r.get(1);
-            let created_str: String = r.get(2);
-            let tags_str: String = r.get(3);
-
-            let profile_id = Uuid::parse_str(&profile_id_str)
-                .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(sqlx::Error::Decode(Box::new(e)))))?;
-            let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
-                .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(sqlx::Error::Decode(Box::new(e)))))?
-                .with_timezone(&Utc);
-            let tags: Vec<String> = serde_json::from_str(&tags_str)
-                .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Serialization(e)))?;
-
+        if let Some((profile_id, key, created_at, tags)) = meta_opt {
             let (encrypted_value, nonce) = crypto::encrypt_value(new_value, &self.master_key)?;
             let cred = Credential {
                 id: credential_id,
