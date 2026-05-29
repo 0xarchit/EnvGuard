@@ -16,23 +16,23 @@ jobs:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-22.04
             use_cross: true
-            artifact_name: env_guard_app-linux-x86_64
+            formats: deb,appimage
           - target: aarch64-unknown-linux-musl
             os: ubuntu-22.04
             use_cross: true
-            artifact_name: env_guard_app-linux-aarch64
+            formats: deb,appimage
           - target: x86_64-pc-windows-msvc
             os: windows-2022
             use_cross: false
-            artifact_name: env_guard_app-windows-x86_64.exe
+            formats: wix,nsis
           - target: aarch64-pc-windows-msvc
             os: windows-2022
             use_cross: false
-            artifact_name: env_guard_app-windows-aarch64.exe
+            formats: wix,nsis
           - target: universal-apple-darwin
             os: macos-14
             use_cross: false
-            artifact_name: env_guard_app-macos-universal
+            formats: dmg,app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,11 +83,18 @@ jobs:
           else
             exit 1
           fi
+      - name: Install cargo-binstall
+        uses: taiki-e/install-action@cargo-binstall
+      - name: Install cargo-packager
+        run: cargo binstall -y cargo-packager
+      - name: Build Installer Package
+        run: cargo packager --release --target ${{ matrix.target }} --formats ${{ matrix.formats }}
+        working-directory: crates/env_guard_app
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: target/${{ matrix.target }}/release/env_guard_app*
+          name: installers-${{ matrix.target }}
+          path: dist/*
 
   release:
     name: Publish Release
