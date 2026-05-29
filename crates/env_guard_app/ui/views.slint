@@ -118,6 +118,7 @@ export component UnlockView inherits Rectangle {
     in property <string> error-text: "";
     in-out property <string> password: "";
     callback unlock(string);
+    callback reset-vault();
     background: Palette.bg-base;
     VerticalLayout {
         alignment: center;
@@ -140,6 +141,10 @@ export component UnlockView inherits Rectangle {
         PrimaryButton {
             text: "Unlock";
             clicked => { root.unlock(root.password); }
+        }
+        DangerButton {
+            text: "Reset and Wipe Vault";
+            clicked => { root.reset-vault(); }
         }
     }
 }

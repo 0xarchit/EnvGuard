@@ -83,6 +83,29 @@ fn main() {
         });
     });
 
+    let rv_state = Arc::clone(&controller_state);
+    let rv_handle = ui_handle.clone();
+    ui.on_reset_vault(move || {
+        let rv_state = Arc::clone(&rv_state);
+        let rv_handle = rv_handle.clone();
+        tokio::spawn(async move {
+            {
+                let mut lock = rv_state.lock().await;
+                if let Some(ctrl) = lock.take() {
+                    let _ = ctrl.lock().await;
+                }
+            }
+            let base_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+            let db_path = base_dir.join("EnvGuard").join("vault.db");
+            let salt_path = db_path.with_extension("salt");
+            let _ = std::fs::remove_file(&db_path);
+            let _ = std::fs::remove_file(&salt_path);
+            let _ = rv_handle.upgrade_in_event_loop(move |ui| {
+                ui.set_error_message("Vault wiped successfully. Enter a new password to initialize a new vault.".into());
+            });
+        });
+    });
+
     let cp_state = Arc::clone(&controller_state);
     let cp_handle = ui_handle.clone();
     ui.on_create_profile(move |name, desc| {

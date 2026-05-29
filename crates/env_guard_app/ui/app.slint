@@ -44,10 +44,12 @@ export component AppWindow inherits Window {
     callback stop-session(string);
     callback scan-env-files(string);
     callback save-profile-rules(string, string, string);
+    callback reset-vault;
 
     if vault-locked: UnlockView {
         error-text: root.error-message;
         unlock(pw) => { root.unlock(pw); }
+        reset-vault => { root.reset-vault(); }
     }
     if !vault-locked: HorizontalLayout {
         Sidebar {
