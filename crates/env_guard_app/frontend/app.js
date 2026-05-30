@@ -9,7 +9,12 @@ const registerApp = () => {
     errorMsg: "",
     confirmErrorMsg: "",
     vaultDir: "",
-    darkMode: true,
+    appConfig: {
+      theme: "dark",
+      default_shell: "powershell",
+      launch_at_startup: false,
+      start_locked: true,
+    },
     profiles: [],
     newProfileName: "",
     newProfileDesc: "",
@@ -48,8 +53,8 @@ const registerApp = () => {
 
       try {
         if (window.__TAURI__ && window.__TAURI__.core) {
-          const theme = await window.__TAURI__.core.invoke("get_theme_preference");
-          this.darkMode = theme;
+          const config = await window.__TAURI__.core.invoke("get_app_config");
+          this.appConfig = config;
           this.applyTheme();
         }
       } catch (e) {}
@@ -71,19 +76,25 @@ const registerApp = () => {
     },
 
     applyTheme() {
-      if (this.darkMode) {
+      if (this.appConfig.theme === "dark") {
         document.body.classList.remove("light-theme");
       } else {
         document.body.classList.add("light-theme");
       }
     },
 
-    async toggleTheme() {
-      this.darkMode = !this.darkMode;
-      this.applyTheme();
+    async saveConfig() {
       try {
-        await window.__TAURI__.core.invoke("save_theme_preference", { dark: this.darkMode });
-      } catch (e) {}
+        await window.__TAURI__.core.invoke("save_app_config", { config: this.appConfig });
+        this.applyTheme();
+      } catch (e) {
+        this.showToast("Failed to save config: " + e, "danger");
+      }
+    },
+
+    async toggleTheme() {
+      this.appConfig.theme = this.appConfig.theme === "dark" ? "light" : "dark";
+      await this.saveConfig();
     },
 
     showToast(message, type = "info") {
@@ -467,8 +478,7 @@ const registerApp = () => {
     async startSession(profileId) {
       this.loading = true;
       try {
-        const isWindows = navigator.userAgent.toLowerCase().includes("win");
-        const shell = isWindows ? "powershell" : "bash";
+        const shell = this.appConfig.default_shell;
         await window.__TAURI__.core.invoke("start_session", { profileId, shell });
         this.showToast("Session injected! Every new terminal session will have these variables (restart your existing terminals).", "success");
         await this.loadSessions();

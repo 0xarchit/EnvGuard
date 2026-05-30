@@ -295,14 +295,41 @@
         <hr class="divider">
 
         <div class="settings-section">
-          <h3>Appearance</h3>
+          <h3>Appearance & Preferences</h3>
           <div class="card card-settings">
             <div class="settings-row">
               <div class="settings-label">
                 <h4>Color Theme</h4>
                 <p>Switch between dark and light appearance.</p>
               </div>
-              <button @click="toggleTheme()" class="btn btn-secondary" x-text="darkMode ? '☀ Switch to Light' : '🌙 Switch to Dark'"></button>
+              <button @click="toggleTheme()" class="btn btn-secondary" x-text="appConfig.theme === 'dark' ? '☀ Switch to Light' : '🌙 Switch to Dark'"></button>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">
+                <h4>Default Shell</h4>
+                <p>The shell selected by default when starting a new session.</p>
+              </div>
+              <input type="text" x-model="appConfig.default_shell" @change="saveConfig()" class="form-input w-160">
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>System Integration</h3>
+          <div class="card card-settings">
+            <div class="settings-row">
+              <div class="settings-label">
+                <h4>Launch at OS Startup</h4>
+                <p>Start EnvGuard in the background when you log in.</p>
+              </div>
+              <input type="checkbox" x-model="appConfig.launch_at_startup" @change="saveConfig()" class="form-checkbox">
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">
+                <h4>Start Locked</h4>
+                <p>Always require master password on app launch.</p>
+              </div>
+              <input type="checkbox" x-model="appConfig.start_locked" @change="saveConfig()" class="form-checkbox">
             </div>
           </div>
         </div>

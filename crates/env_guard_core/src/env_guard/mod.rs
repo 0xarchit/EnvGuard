@@ -32,7 +32,7 @@ impl envGuard {
                 .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?
         } else {
             let s = crypto::generate_vault_salt();
-            std::fs::write(&salt_path, &s)
+            std::fs::write(&salt_path, s)
                 .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?;
             s.to_vec()
         };
@@ -215,7 +215,7 @@ impl envGuard {
         }
         let decrypted_creds = self.get_decrypted_credentials(profile_id).await?;
         let session = session::spawn_session(&profile, decrypted_creds, shell, &self.pool, Some(self.active_sessions.clone())).await
-            .map_err(|e| ControllerError::Session(e))?;
+            .map_err(ControllerError::Session)?;
         
         let mut sessions = self.active_sessions.lock().await;
         sessions.insert(session.id, session.clone());
@@ -230,7 +230,7 @@ impl envGuard {
             let _ = session::remove_environment(&keys).await;
 
             session::terminate_session(session_id, &self.pool).await
-                .map_err(|e| ControllerError::Session(e))?;
+                .map_err(ControllerError::Session)?;
         }
         Ok(())
     }

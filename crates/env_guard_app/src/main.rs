@@ -2,6 +2,7 @@
 
 mod state;
 mod commands;
+mod config;
 
 use state::VaultState;
 
@@ -30,8 +31,8 @@ fn main() {
             commands::list_active_sessions,
             commands::scan_for_env_files,
             commands::get_vault_directory,
-            commands::get_theme_preference,
-            commands::save_theme_preference
+            commands::get_app_config,
+            commands::save_app_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
