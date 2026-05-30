@@ -5,7 +5,6 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 use chrono::Utc;
 use sqlx::SqlitePool;
-use portable_pty::{native_pty_system, PtySize, CommandBuilder};
 use crate::env_guard::models::{Profile, PlaintextCredential, RuntimeSession, ShellType, SessionStatus};
 use crate::env_guard::errors::SessionError;
 use crate::env_guard::storage;
@@ -15,17 +14,7 @@ pub fn resolve_shell_path(shell: &ShellType) -> Result<PathBuf, SessionError> {
         ShellType::Bash => {
             #[cfg(target_os = "windows")]
             {
-                let candidates = [
-                    r"C:\Program Files\Git\bin\bash.exe",
-                    r"C:\Program Files (x86)\Git\bin\bash.exe",
-                ];
-                for p in candidates {
-                    let path = PathBuf::from(p);
-                    if path.exists() {
-                        return Ok(path);
-                    }
-                }
-                Err(SessionError::ShellNotFound("Bash".to_string()))
+                Ok(PathBuf::from("Bash"))
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -49,9 +38,7 @@ pub fn resolve_shell_path(shell: &ShellType) -> Result<PathBuf, SessionError> {
         ShellType::PowerShell => {
             #[cfg(target_os = "windows")]
             {
-                which::which("pwsh")
-                    .or_else(|_| which::which("powershell"))
-                    .map_err(|_| SessionError::ShellNotFound("PowerShell".to_string()))
+                Ok(PathBuf::from("PowerShell"))
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -96,18 +83,65 @@ pub async fn kill_process(pid: u32) -> Result<(), SessionError> {
 }
 
 #[cfg(windows)]
-pub async fn kill_process(pid: u32) -> Result<(), SessionError> {
-    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
-    use windows::Win32::Foundation::CloseHandle;
-    unsafe {
-        let handle = OpenProcess(PROCESS_TERMINATE, false, pid)
-            .map_err(|e| SessionError::KillFailed(e.to_string()))?;
-        let res = TerminateProcess(handle, 1);
-        let _ = CloseHandle(handle);
-        if res.is_err() {
-            return Err(SessionError::KillFailed("TerminateProcess failed".to_string()));
-        }
+pub async fn kill_process(_pid: u32) -> Result<(), SessionError> {
+    // No longer applicable since we don't spawn child processes
+    Ok(())
+}
+
+#[cfg(windows)]
+pub async fn inject_environment(credentials: &[PlaintextCredential]) -> Result<(), SessionError> {
+    if credentials.is_empty() { return Ok(()); }
+    let mut script = String::new();
+    for cred in credentials {
+        let key = cred.key.replace("'", "''");
+        let val = cred.value.replace("'", "''");
+        script.push_str(&format!("[Environment]::SetEnvironmentVariable('{}', '{}', 'User');\n", key, val));
     }
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(&script)
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output()
+        .map_err(|e| SessionError::Io(e))?;
+
+    if !output.status.success() {
+        return Err(SessionError::PtyError("Failed to inject environment variables".into()));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+pub async fn remove_environment(keys: &[String]) -> Result<(), SessionError> {
+    if keys.is_empty() { return Ok(()); }
+    let mut script = String::new();
+    for key in keys {
+        let k = key.replace("'", "''");
+        script.push_str(&format!("[Environment]::SetEnvironmentVariable('{}', $null, 'User');\n", k));
+    }
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(&script)
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output()
+        .map_err(|e| SessionError::Io(e))?;
+
+    if !output.status.success() {
+        return Err(SessionError::PtyError("Failed to remove environment variables".into()));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub async fn inject_environment(_credentials: &[PlaintextCredential]) -> Result<(), SessionError> {
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub async fn remove_environment(_keys: &[String]) -> Result<(), SessionError> {
     Ok(())
 }
 
@@ -124,81 +158,12 @@ pub async fn spawn_session(
     active_sessions: Option<Arc<Mutex<HashMap<Uuid, RuntimeSession>>>>,
 ) -> Result<RuntimeSession, SessionError> {
     let shell_path = resolve_shell_path(&shell)?;
-    let whitelist = [
-        "PATH",
-        "TERM",
-        "HOME",
-        "USER",
-        "USERNAME",
-        "SystemRoot",
-        "SystemDrive",
-        "COMSPEC",
-        "TEMP",
-        "TMP",
-        "USERPROFILE",
-        "LANG",
-        "LC_ALL",
-    ];
-
-    let mut envs = HashMap::new();
-    for &w in &whitelist {
-        if let Ok(val) = std::env::var(w) {
-            envs.insert(w.to_string(), val);
-        }
-    }
-    for cred in &credentials {
-        envs.insert(cred.key.clone(), (*cred.value).clone());
+    #[cfg(windows)]
+    {
+        inject_environment(&credentials).await?;
     }
 
-    let pty_system = native_pty_system();
-    let pair_opt = pty_system.openpty(PtySize {
-        rows: 24,
-        cols: 80,
-        pixel_width: 0,
-        pixel_height: 0,
-    });
-
-    let (pid, child_waiter) = match pair_opt {
-        Ok(pair) => {
-            let mut cmd = CommandBuilder::new(&shell_path);
-            for (key, _) in std::env::vars() {
-                cmd.env_remove(key);
-            }
-            for (key, val) in envs {
-                cmd.env(key, val);
-            }
-            let mut child = pair
-                .slave
-                .spawn_command(cmd)
-                .map_err(|e| SessionError::PtyError(e.to_string()))?;
-            let pid = child.process_id();
-            let waiter: Box<dyn FnOnce() -> Result<SessionExitStatus, std::io::Error> + Send + 'static> = Box::new(move || {
-                let status = child.wait()?;
-                Ok(SessionExitStatus {
-                    success: status.success(),
-                    desc: format!("{:?}", status),
-                })
-            });
-            (pid, waiter)
-        }
-        Err(_) => {
-            let mut cmd = std::process::Command::new(&shell_path);
-            cmd.env_clear();
-            for (key, val) in envs {
-                cmd.env(key, val);
-            }
-            let mut child = cmd.spawn().map_err(|e| SessionError::Io(e))?;
-            let pid = child.id();
-            let waiter: Box<dyn FnOnce() -> Result<SessionExitStatus, std::io::Error> + Send + 'static> = Box::new(move || {
-                let status = child.wait()?;
-                Ok(SessionExitStatus {
-                    success: status.success(),
-                    desc: format!("{:?}", status),
-                })
-            });
-            (Some(pid), waiter)
-        }
-    };
+    let pid = None;
 
     let session_id = Uuid::new_v4();
     let started_at = Utc::now();
@@ -225,44 +190,26 @@ pub async fn spawn_session(
         .await
         .map_err(|e| SessionError::PtyError(e.to_string()))?;
 
-    let pool_clone = pool.clone();
-    let expires_at_clone = expires_at;
-    let profile_id_clone = profile.id;
-    let active_sessions_clone = active_sessions.clone();
-    tokio::spawn(async move {
-        let mut exit_fut = tokio::task::spawn_blocking(move || child_waiter());
-        let final_status = if let Some(expires) = expires_at_clone {
+    if let Some(expires) = expires_at {
+        let pool_clone = pool.clone();
+        let profile_id_clone = profile.id;
+        let active_sessions_clone = active_sessions.clone();
+        let keys: Vec<String> = credentials.into_iter().map(|c| c.key).collect();
+        
+        tokio::spawn(async move {
             let dur = (expires - Utc::now()).to_std().unwrap_or(std::time::Duration::from_secs(0));
-            tokio::select! {
-                res = &mut exit_fut => {
-                    match res {
-                        Ok(Ok(status)) if status.success => SessionStatus::Terminated,
-                        Ok(Ok(status)) => SessionStatus::Failed(status.desc),
-                        _ => SessionStatus::Failed("Process exited abnormally".to_string()),
-                    }
-                }
-                _ = tokio::time::sleep(dur) => {
-                    if let Some(p) = pid {
-                        let _ = kill_process(p).await;
-                    }
-                    SessionStatus::Expired
-                }
+            tokio::time::sleep(dur).await;
+            
+            let _ = remove_environment(&keys).await;
+            
+            let _ = storage::update_session_status(&pool_clone, session_id, SessionStatus::Expired).await;
+            let _ = storage::update_profile_active_status(&pool_clone, profile_id_clone, false).await;
+            if let Some(active_map) = active_sessions_clone {
+                let mut map = active_map.lock().await;
+                map.remove(&session_id);
             }
-        } else {
-            let res = exit_fut.await;
-            match res {
-                Ok(Ok(status)) if status.success => SessionStatus::Terminated,
-                Ok(Ok(status)) => SessionStatus::Failed(status.desc),
-                _ => SessionStatus::Failed("Process exited abnormally".to_string()),
-            }
-        };
-        let _ = storage::update_session_status(&pool_clone, session_id, final_status).await;
-        let _ = storage::update_profile_active_status(&pool_clone, profile_id_clone, false).await;
-        if let Some(active_map) = active_sessions_clone {
-            let mut map = active_map.lock().await;
-            map.remove(&session_id);
-        }
-    });
+        });
+    }
 
     Ok(session)
 }

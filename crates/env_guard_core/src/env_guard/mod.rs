@@ -54,9 +54,9 @@ impl envGuard {
         {
             let mut sessions = self.active_sessions.lock().await;
             for (_, session) in sessions.drain() {
-                if let Some(pid) = session.pid {
-                    let _ = session::kill_process(pid).await;
-                }
+                let decrypted = self.get_decrypted_credentials(session.profile_id).await.unwrap_or_default();
+                let keys: Vec<String> = decrypted.into_iter().map(|c| c.key).collect();
+                let _ = session::remove_environment(&keys).await;
             }
         }
         self.pool.close().await;
@@ -225,9 +225,10 @@ impl envGuard {
     pub async fn stop_session(&self, session_id: Uuid) -> Result<(), ControllerError> {
         let mut sessions = self.active_sessions.lock().await;
         if let Some(session) = sessions.remove(&session_id) {
-            if let Some(pid) = session.pid {
-                let _ = session::kill_process(pid).await;
-            }
+            let decrypted = self.get_decrypted_credentials(session.profile_id).await.unwrap_or_default();
+            let keys: Vec<String> = decrypted.into_iter().map(|c| c.key).collect();
+            let _ = session::remove_environment(&keys).await;
+
             session::terminate_session(session_id, &self.pool).await
                 .map_err(|e| ControllerError::Session(e))?;
         }
