@@ -138,10 +138,25 @@ pub async fn update_profile(
     name: String,
     description: Option<String>,
 ) -> Result<(), String> {
-    let profile_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let profile_id = Uuid::parse_str(&id).map_err(|_| "Invalid profile ID")?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.update_profile(profile_uuid, &name, description.as_deref())
+    engine.update_profile(profile_id, &name, description.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_profile_metadata(
+    state: State<'_, VaultState>,
+    id: String,
+    color: Option<String>,
+    tags: Vec<String>,
+) -> Result<(), String> {
+    let profile_id = Uuid::parse_str(&id).map_err(|_| "Invalid profile ID")?;
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    engine.update_profile_metadata(profile_id, color.as_deref(), &tags)
         .await
         .map_err(|e| e.to_string())
 }

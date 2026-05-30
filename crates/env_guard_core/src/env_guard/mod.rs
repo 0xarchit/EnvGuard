@@ -75,6 +75,9 @@ impl envGuard {
             description: description.map(|s| s.to_string()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            last_used_at: None,
+            color: None,
+            tags: Vec::new(),
             is_active: false,
             session_rules,
         };
@@ -253,7 +256,21 @@ impl envGuard {
         
         let mut sessions = self.active_sessions.lock().await;
         sessions.insert(session.id, session.clone());
+        
+        // Update last_used_at
+        storage::update_profile_last_used(&self.pool, profile_id).await?;
+
         Ok(session)
+    }
+
+    pub async fn update_profile_metadata(
+        &self,
+        profile_id: Uuid,
+        color: Option<&str>,
+        tags: &[String],
+    ) -> Result<(), ControllerError> {
+        storage::update_profile_metadata(&self.pool, profile_id, color, tags).await?;
+        Ok(())
     }
 
     pub async fn stop_session(&self, session_id: Uuid) -> Result<(), ControllerError> {

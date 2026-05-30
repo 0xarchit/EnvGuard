@@ -31,9 +31,33 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
             session_rules TEXT NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            last_used_at TEXT,
+            color TEXT,
+            tags TEXT NOT NULL DEFAULT '[]'
         );"
     ).execute(&pool).await?;
+
+    // Schema migration for old vaults
+    let table_info = sqlx::query("PRAGMA table_info(profiles)").fetch_all(&pool).await?;
+    let mut has_last_used = false;
+    let mut has_color = false;
+    let mut has_tags = false;
+    for row in table_info {
+        let name: String = row.get("name");
+        if name == "last_used_at" { has_last_used = true; }
+        if name == "color" { has_color = true; }
+        if name == "tags" { has_tags = true; }
+    }
+    if !has_last_used {
+        sqlx::query("ALTER TABLE profiles ADD COLUMN last_used_at TEXT").execute(&pool).await?;
+    }
+    if !has_color {
+        sqlx::query("ALTER TABLE profiles ADD COLUMN color TEXT").execute(&pool).await?;
+    }
+    if !has_tags {
+        sqlx::query("ALTER TABLE profiles ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'").execute(&pool).await?;
+    }
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS credentials (
@@ -67,9 +91,11 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
 
 pub async fn store_profile(pool: &SqlitePool, profile: &Profile) -> Result<(), StorageError> {
     let rules_str = serde_json::to_string(&profile.session_rules)?;
+    let tags_str = serde_json::to_string(&profile.tags)?;
+    let last_used_str = profile.last_used_at.map(|dt| dt.to_rfc3339());
     sqlx::query(
-        "INSERT INTO profiles (id, name, description, session_rules, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO profiles (id, name, description, session_rules, is_active, created_at, updated_at, last_used_at, color, tags)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(profile.id.to_string())
     .bind(&profile.name)
@@ -78,13 +104,16 @@ pub async fn store_profile(pool: &SqlitePool, profile: &Profile) -> Result<(), S
     .bind(if profile.is_active { 1 } else { 0 })
     .bind(profile.created_at.to_rfc3339())
     .bind(profile.updated_at.to_rfc3339())
+    .bind(last_used_str)
+    .bind(&profile.color)
+    .bind(tags_str)
     .execute(pool)
     .await?;
     Ok(())
 }
 
 pub async fn get_profile(pool: &SqlitePool, id: Uuid) -> Result<Option<Profile>, StorageError> {
-    let row = sqlx::query("SELECT id, name, description, session_rules, is_active, created_at, updated_at FROM profiles WHERE id = ?")
+    let row = sqlx::query("SELECT id, name, description, session_rules, is_active, created_at, updated_at, last_used_at, color, tags FROM profiles WHERE id = ?")
         .bind(id.to_string())
         .fetch_optional(pool)
         .await?;
@@ -96,14 +125,26 @@ pub async fn get_profile(pool: &SqlitePool, id: Uuid) -> Result<Option<Profile>,
         let is_active_int: i32 = r.get(4);
         let created_str: String = r.get(5);
         let updated_str: String = r.get(6);
+        let last_used_str: Option<String> = r.get(7);
+        let color: Option<String> = r.get(8);
+        let tags_str: String = r.get(9);
 
         let rules: SessionRules = serde_json::from_str(&rules_str)?;
+        let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
         let created_at = DateTime::parse_from_rfc3339(&created_str)
             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
             .with_timezone(&Utc);
         let updated_at = DateTime::parse_from_rfc3339(&updated_str)
             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
             .with_timezone(&Utc);
+        let last_used_at = match last_used_str {
+            Some(s) => Some(
+                DateTime::parse_from_rfc3339(&s)
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
+                    .with_timezone(&Utc),
+            ),
+            None => None,
+        };
 
         Ok(Some(Profile {
             id: Uuid::parse_str(&id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
@@ -111,6 +152,9 @@ pub async fn get_profile(pool: &SqlitePool, id: Uuid) -> Result<Option<Profile>,
             description,
             created_at,
             updated_at,
+            last_used_at,
+            color,
+            tags,
             is_active: is_active_int != 0,
             session_rules: rules,
         }))
@@ -120,7 +164,7 @@ pub async fn get_profile(pool: &SqlitePool, id: Uuid) -> Result<Option<Profile>,
 }
 
 pub async fn list_profiles(pool: &SqlitePool) -> Result<Vec<Profile>, StorageError> {
-    let rows = sqlx::query("SELECT id, name, description, session_rules, is_active, created_at, updated_at FROM profiles")
+    let rows = sqlx::query("SELECT id, name, description, session_rules, is_active, created_at, updated_at, last_used_at, color, tags FROM profiles")
         .fetch_all(pool)
         .await?;
     let mut results = Vec::new();
@@ -132,14 +176,26 @@ pub async fn list_profiles(pool: &SqlitePool) -> Result<Vec<Profile>, StorageErr
         let is_active_int: i32 = r.get(4);
         let created_str: String = r.get(5);
         let updated_str: String = r.get(6);
+        let last_used_str: Option<String> = r.get(7);
+        let color: Option<String> = r.get(8);
+        let tags_str: String = r.get(9);
 
         let rules: SessionRules = serde_json::from_str(&rules_str)?;
+        let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
         let created_at = DateTime::parse_from_rfc3339(&created_str)
             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
             .with_timezone(&Utc);
         let updated_at = DateTime::parse_from_rfc3339(&updated_str)
             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
             .with_timezone(&Utc);
+        let last_used_at = match last_used_str {
+            Some(s) => Some(
+                DateTime::parse_from_rfc3339(&s)
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
+                    .with_timezone(&Utc),
+            ),
+            None => None,
+        };
 
         results.push(Profile {
             id: Uuid::parse_str(&id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?,
@@ -147,6 +203,9 @@ pub async fn list_profiles(pool: &SqlitePool) -> Result<Vec<Profile>, StorageErr
             description,
             created_at,
             updated_at,
+            last_used_at,
+            color,
+            tags,
             is_active: is_active_int != 0,
             session_rules: rules,
         });
@@ -173,6 +232,39 @@ pub async fn update_profile(
     )
     .bind(name)
     .bind(description)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn update_profile_metadata(
+    pool: &SqlitePool,
+    id: Uuid,
+    color: Option<&str>,
+    tags: &[String],
+) -> Result<(), StorageError> {
+    let tags_str = serde_json::to_string(tags)?;
+    sqlx::query(
+        "UPDATE profiles SET color = ?, tags = ?, updated_at = ? WHERE id = ?"
+    )
+    .bind(color)
+    .bind(tags_str)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn update_profile_last_used(
+    pool: &SqlitePool,
+    id: Uuid,
+) -> Result<(), StorageError> {
+    sqlx::query(
+        "UPDATE profiles SET last_used_at = ? WHERE id = ?"
+    )
     .bind(chrono::Utc::now().to_rfc3339())
     .bind(id.to_string())
     .execute(pool)

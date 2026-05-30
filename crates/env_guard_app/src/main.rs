@@ -19,6 +19,7 @@ fn main() {
             commands::create_profile,
             commands::list_profiles,
             commands::update_profile,
+            commands::update_profile_metadata,
             commands::duplicate_profile,
             commands::get_profile,
             commands::update_profile_rules,

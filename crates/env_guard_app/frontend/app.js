@@ -21,6 +21,8 @@ const registerApp = () => {
     editingProfileId: null,
     editProfileName: "",
     editProfileDesc: "",
+    editProfileColor: "",
+    editProfileTags: "",
     rulesTimeout: "",
     rulesShells: "",
     newSecretKey: "",
@@ -210,6 +212,11 @@ const registerApp = () => {
     async loadProfiles() {
       try {
         const list = await window.__TAURI__.core.invoke("list_profiles");
+        list.sort((a, b) => {
+          const tA = a.last_used_at ? new Date(a.last_used_at).getTime() : new Date(a.created_at).getTime();
+          const tB = b.last_used_at ? new Date(b.last_used_at).getTime() : new Date(b.created_at).getTime();
+          return tB - tA;
+        });
         this.profiles = list;
       } catch (e) {
         this.showToast("Failed to load profiles", "danger");
@@ -248,6 +255,8 @@ const registerApp = () => {
       this.editingProfileId = p.id;
       this.editProfileName = p.name;
       this.editProfileDesc = p.description || "";
+      this.editProfileColor = p.color || "";
+      this.editProfileTags = p.tags ? p.tags.join(", ") : "";
     },
 
     cancelProfileEdit() {
@@ -266,9 +275,19 @@ const registerApp = () => {
           name: this.editProfileName,
           description: this.editProfileDesc || null
         });
+        
+        const tagsArray = this.editProfileTags.split(",").map(t => t.trim()).filter(t => t.length > 0);
+        await window.__TAURI__.core.invoke("update_profile_metadata", {
+          id: this.editingProfileId,
+          color: this.editProfileColor || null,
+          tags: tagsArray
+        });
+
         if (this.selectedProfile && this.selectedProfile.id === this.editingProfileId) {
           this.selectedProfile.name = this.editProfileName;
           this.selectedProfile.description = this.editProfileDesc || null;
+          this.selectedProfile.color = this.editProfileColor || null;
+          this.selectedProfile.tags = tagsArray;
         }
         this.editingProfileId = null;
         await this.loadProfiles();

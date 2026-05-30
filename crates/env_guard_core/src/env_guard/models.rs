@@ -27,6 +27,9 @@ pub struct Profile {
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub color: Option<String>,
+    pub tags: Vec<String>,
     pub is_active: bool,
     pub session_rules: SessionRules,
 }
