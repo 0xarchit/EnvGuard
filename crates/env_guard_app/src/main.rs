@@ -18,6 +18,8 @@ fn main() {
             commands::is_vault_initialized,
             commands::create_profile,
             commands::list_profiles,
+            commands::update_profile,
+            commands::duplicate_profile,
             commands::get_profile,
             commands::update_profile_rules,
             commands::delete_profile,

@@ -17,8 +17,10 @@ const registerApp = () => {
     },
     profiles: [],
     newProfileName: "",
-    newProfileDesc: "",
     selectedProfile: null,
+    editingProfileId: null,
+    editProfileName: "",
+    editProfileDesc: "",
     rulesTimeout: "",
     rulesShells: "",
     newSecretKey: "",
@@ -237,6 +239,55 @@ const registerApp = () => {
         this.showToast("Profile created", "success");
       } catch (e) {
         this.showToast("Failed to create profile: " + e, "danger");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    startEditingProfile(p) {
+      this.editingProfileId = p.id;
+      this.editProfileName = p.name;
+      this.editProfileDesc = p.description || "";
+    },
+
+    cancelProfileEdit() {
+      this.editingProfileId = null;
+    },
+
+    async saveProfileEdit() {
+      if (!this.editProfileName.trim()) {
+        this.showToast("Profile name is required", "danger");
+        return;
+      }
+      this.loading = true;
+      try {
+        await window.__TAURI__.core.invoke("update_profile", {
+          id: this.editingProfileId,
+          name: this.editProfileName,
+          description: this.editProfileDesc || null
+        });
+        if (this.selectedProfile && this.selectedProfile.id === this.editingProfileId) {
+          this.selectedProfile.name = this.editProfileName;
+          this.selectedProfile.description = this.editProfileDesc || null;
+        }
+        this.editingProfileId = null;
+        await this.loadProfiles();
+        this.showToast("Profile updated", "success");
+      } catch (e) {
+        this.showToast("Failed to update profile: " + e, "danger");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async triggerDuplicateProfile(id) {
+      this.loading = true;
+      try {
+        await window.__TAURI__.core.invoke("duplicate_profile", { id });
+        await this.loadProfiles();
+        this.showToast("Profile duplicated", "success");
+      } catch (e) {
+        this.showToast("Failed to duplicate profile: " + e, "danger");
       } finally {
         this.loading = false;
       }

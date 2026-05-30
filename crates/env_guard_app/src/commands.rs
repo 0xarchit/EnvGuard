@@ -132,6 +132,34 @@ pub async fn list_profiles(
 }
 
 #[tauri::command]
+pub async fn update_profile(
+    state: State<'_, VaultState>,
+    id: String,
+    name: String,
+    description: Option<String>,
+) -> Result<(), String> {
+    let profile_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    engine.update_profile(profile_uuid, &name, description.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn duplicate_profile(
+    state: State<'_, VaultState>,
+    id: String,
+) -> Result<Profile, String> {
+    let profile_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    engine.duplicate_profile(profile_uuid)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn get_profile(
     state: State<'_, VaultState>,
     id: String,
