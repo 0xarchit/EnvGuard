@@ -24,6 +24,7 @@ pub fn derive_master_key(
     Ok(Zeroizing::new(derived))
 }
 
+#[allow(clippy::type_complexity)]
 pub fn derive_split_keys(
     master_secret: &[u8; 32],
 ) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<[u8; 32]>), CryptoError> {

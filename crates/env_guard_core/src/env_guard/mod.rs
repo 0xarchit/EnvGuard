@@ -109,6 +109,40 @@ impl envGuard {
         Ok(())
     }
 
+    pub async fn update_profile(
+        &self,
+        profile_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<(), ControllerError> {
+        storage::update_profile(&self.pool, profile_id, name, description).await?;
+        Ok(())
+    }
+
+    pub async fn duplicate_profile(&self, profile_id: Uuid) -> Result<Profile, ControllerError> {
+        let p = storage::get_profile(&self.pool, profile_id)
+            .await?
+            .ok_or(ControllerError::Storage(crate::env_guard::errors::StorageError::ProfileNotFound(profile_id)))?;
+        let new_name = format!("{} (Copy)", p.name);
+        
+        // 1. Create the new profile
+        let new_profile = self.create_profile(
+            &new_name,
+            p.description.as_deref(),
+            p.session_rules,
+        ).await?;
+
+        // 2. Fetch and decrypt credentials
+        let creds = self.get_decrypted_credentials(profile_id).await?;
+
+        // 3. Re-encrypt and store for the new profile
+        for cred in creds {
+            self.add_credential(new_profile.id, &cred.key, cred.value.as_ref()).await?;
+        }
+
+        Ok(new_profile)
+    }
+
     pub async fn add_credential(
         &self,
         profile_id: Uuid,

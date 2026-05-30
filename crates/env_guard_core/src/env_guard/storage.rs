@@ -162,6 +162,24 @@ pub async fn delete_profile(pool: &SqlitePool, id: Uuid) -> Result<(), StorageEr
     Ok(())
 }
 
+pub async fn update_profile(
+    pool: &SqlitePool,
+    id: Uuid,
+    name: &str,
+    description: Option<&str>,
+) -> Result<(), StorageError> {
+    sqlx::query(
+        "UPDATE profiles SET name = ?, description = ?, updated_at = ? WHERE id = ?"
+    )
+    .bind(name)
+    .bind(description)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn store_credential(pool: &SqlitePool, cred: &Credential) -> Result<(), StorageError> {
     let tags_str = serde_json::to_string(&cred.tags)?;
     sqlx::query(

@@ -107,14 +107,24 @@
           
           <template x-for="p in profiles" :key="p.id">
             <div class="card card-profile">
-              <div class="card-left" @click="selectProfile(p.id)">
+              <div class="card-left">
                 <span class="status-dot" :class="{ 'status-active': p.is_active }"></span>
-                <div class="card-details">
+                <div class="card-details" x-show="editingProfileId !== p.id" @click="selectProfile(p.id)" style="cursor: pointer;">
                   <h4 x-text="p.name"></h4>
                   <p x-text="p.description || 'No description'"></p>
                 </div>
+                <div class="card-details" x-show="editingProfileId === p.id">
+                  <input type="text" x-model="editProfileName" class="form-input" style="margin-bottom: 0.5rem;">
+                  <input type="text" x-model="editProfileDesc" class="form-input" style="margin-bottom: 0.5rem;">
+                  <div style="display: flex; gap: 0.5rem;">
+                    <button @click="saveProfileEdit()" class="btn btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Save</button>
+                    <button @click="cancelProfileEdit()" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Cancel</button>
+                  </div>
+                </div>
               </div>
-              <div class="card-right">
+              <div class="card-right" x-show="editingProfileId !== p.id">
+                <button @click="startEditingProfile(p)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" title="Edit Profile">✎</button>
+                <button @click="triggerDuplicateProfile(p.id)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" title="Duplicate Profile">⎘</button>
                 <button @click="startSession(p.id)" class="btn btn-secondary">Launch Session</button>
               </div>
             </div>
