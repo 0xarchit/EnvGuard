@@ -110,12 +110,27 @@
               <div class="card-left">
                 <span class="status-dot" :class="{ 'status-active': p.is_active }"></span>
                 <div class="card-details" x-show="editingProfileId !== p.id" @click="selectProfile(p.id)" style="cursor: pointer;">
-                  <h4 x-text="p.name"></h4>
-                  <p x-text="p.description || 'No description'"></p>
+                  <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <h4 x-text="p.name" style="margin: 0;"></h4>
+                    <span x-show="p.color" class="color-dot" :style="`background-color: ${p.color}; width: 12px; height: 12px; border-radius: 50%; display: inline-block;`"></span>
+                  </div>
+                  <p x-text="p.description || 'No description'" style="margin: 0.25rem 0;"></p>
+                  <div style="display: flex; gap: 0.25rem; margin-bottom: 0.25rem;" x-show="p.tags && p.tags.length > 0">
+                    <template x-for="t in p.tags" :key="t">
+                      <span class="badge" x-text="t" style="font-size: 0.7rem; padding: 0.1rem 0.3rem; background: var(--bg-tertiary); color: var(--text-muted);"></span>
+                    </template>
+                  </div>
+                  <small x-show="p.last_used_at" style="color: var(--text-muted); font-size: 0.75rem;">
+                    Last used: <span x-text="new Date(p.last_used_at).toLocaleString()"></span>
+                  </small>
                 </div>
                 <div class="card-details" x-show="editingProfileId === p.id">
-                  <input type="text" x-model="editProfileName" class="form-input" style="margin-bottom: 0.5rem;">
-                  <input type="text" x-model="editProfileDesc" class="form-input" style="margin-bottom: 0.5rem;">
+                  <input type="text" x-model="editProfileName" class="form-input" style="margin-bottom: 0.5rem;" placeholder="Profile Name">
+                  <input type="text" x-model="editProfileDesc" class="form-input" style="margin-bottom: 0.5rem;" placeholder="Description">
+                  <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <input type="color" x-model="editProfileColor" class="form-input" style="padding: 0; width: 30px; height: 30px; cursor: pointer;" title="Profile Color">
+                    <input type="text" x-model="editProfileTags" class="form-input" style="flex-grow: 1;" placeholder="Tags (comma separated)">
+                  </div>
                   <div style="display: flex; gap: 0.5rem;">
                     <button @click="saveProfileEdit()" class="btn btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Save</button>
                     <button @click="cancelProfileEdit()" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Cancel</button>
