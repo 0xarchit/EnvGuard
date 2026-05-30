@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EnvGuard</title>
+  <link rel="stylesheet" href="index.css">
+  <script defer src="app.js"></script>
+  <script defer src="alpine.min.js"></script>
+</head>
+<body x-cloak x-data="envGuardApp()">
+
+  <div x-show="locked" x-cloak class="unlock-container">
+    <div class="unlock-card">
+      <div class="unlock-header">
+        <span class="unlock-icon" x-text="vaultExists ? '🔐' : '✨'"></span>
+        <h2 x-text="vaultExists ? 'Unlock Vault' : 'Setup Vault'"></h2>
+        <p x-text="vaultExists ? 'Enter your master password to access your credentials.' : 'Create a master password to initialize your secure vault.'"></p>
+      </div>
+
+      <div class="form-group">
+        <div class="password-input-wrapper">
+          <input :type="showUnlockPassword ? 'text' : 'password'" x-model="password" :placeholder="vaultExists ? 'Master password' : 'New master password'" @keyup.enter="unlock()" class="form-input">
+          <button @click="showUnlockPassword = !showUnlockPassword" class="password-toggle" x-text="showUnlockPassword ? 'Hide' : 'Show'"></button>
+        </div>
+        <p x-show="errorMsg" class="error-text" x-text="errorMsg"></p>
+      </div>
+
+      <div class="form-group" x-show="!vaultExists" x-cloak>
+        <div class="password-input-wrapper">
+          <input :type="showUnlockPassword ? 'text' : 'password'" x-model="confirmPassword" placeholder="Confirm master password" @keyup.enter="unlock()" class="form-input">
+        </div>
+        <p x-show="confirmErrorMsg" class="error-text" x-text="confirmErrorMsg"></p>
+      </div>
+
+      <button @click="unlock()" class="btn btn-primary btn-block" x-text="vaultExists ? 'Unlock' : 'Create Vault'"></button>
+
+      <div class="unlock-footer">
+        <button @click="triggerWipeVault()" class="btn-link text-danger">Reset & Wipe Vault</button>
+        <div class="vault-dir-info">Vault directory: <span x-text="vaultDir"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div x-show="!locked" x-cloak class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="app-logo">🛡️</div>
+        <div class="app-details">
+          <h3>EnvGuard</h3>
+          <p>Secrets Vault</p>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button @click="activeView = 'profiles'; loadProfiles()" :class="{ 'active': activeView === 'profiles' || activeView === 'profile-detail' }" class="nav-item">
+          <span class="nav-icon">📁</span>
+          <span class="nav-label">Profiles</span>
+        </button>
+        <button @click="activeView = 'sessions'; loadSessions()" :class="{ 'active': activeView === 'sessions' }" class="nav-item">
+          <span class="nav-icon">⌨</span>
+          <span class="nav-label">Sessions</span>
+          <span x-show="activeSessions.length > 0" class="nav-badge" x-text="activeSessions.length"></span>
+        </button>
+        <button @click="activeView = 'scanner'" :class="{ 'active': activeView === 'scanner' }" class="nav-item">
+          <span class="nav-icon">⌕</span>
+          <span class="nav-label">Scanner</span>
+        </button>
+        <button @click="activeView = 'settings'; loadSettings()" :class="{ 'active': activeView === 'settings' }" class="nav-item">
+          <span class="nav-icon">⚙</span>
+          <span class="nav-label">Settings</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button @click="lock()" class="nav-item lock-btn">
+          <span class="nav-icon">🔒</span>
+          <span class="nav-label">Lock Vault</span>
+          <span class="shortcut-hint">Ctrl+L</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="content-area">
+      <div x-show="activeView === 'profiles'" class="view-panel">
+        <div class="panel-header">
+          <h2>Project Profiles</h2>
+          <span class="badge" x-text="profiles.length + ' profiles'"></span>
+        </div>
+        <hr class="divider">
+        
+        <div class="toolbar">
+          <input type="text" x-model="newProfileName" placeholder="Profile name" class="form-input">
+          <input type="text" x-model="newProfileDesc" placeholder="Description" class="form-input flex-grow">
+          <button @click="createProfile()" class="btn btn-primary">+ Create Profile</button>
+        </div>
+        <hr class="divider">
+
+        <div class="list-container">
+          <template x-if="profiles.length === 0">
+            <div class="empty-state">
+              <span class="empty-icon">📁</span>
+              <h4>No profiles yet</h4>
+              <p>Create your first project profile above to get started.</p>
+            </div>
+          </template>
+          
+          <template x-for="p in profiles" :key="p.id">
+            <div class="card card-profile">
+              <div class="card-left" @click="selectProfile(p.id)">
+                <span class="status-dot" :class="{ 'status-active': p.is_active }"></span>
+                <div class="card-details">
+                  <h4 x-text="p.name"></h4>
+                  <p x-text="p.description || 'No description'"></p>
+                </div>
+              </div>
+              <div class="card-right">
+                <button @click="startSession(p.id)" class="btn btn-secondary">Launch Session</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div x-show="activeView === 'profile-detail'" class="view-panel">
+        <div class="panel-header">
+          <div class="header-left">
+            <button @click="activeView = 'profiles'; selectedProfile = null; loadProfiles()" class="btn btn-secondary btn-back">← Back</button>
+            <h2 x-text="'Workspace: ' + (selectedProfile ? selectedProfile.name : '')"></h2>
+          </div>
+          <span class="badge" x-text="credentials.length + ' secrets'"></span>
+        </div>
+        <hr class="divider">
+
+        <div class="rules-section">
+          <h3>Session Rules</h3>
+          <div class="rules-row">
+            <div class="form-inline-group">
+              <label>Timeout (seconds)</label>
+              <input type="number" x-model="rulesTimeout" placeholder="Persistent" class="form-input w-160">
+            </div>
+            <div class="form-inline-group flex-grow">
+              <label>Allowed shells (comma separated)</label>
+              <input type="text" x-model="rulesShells" placeholder="e.g. bash, cmd, powershell" class="form-input">
+            </div>
+            <button @click="saveRules()" class="btn btn-secondary align-self-end">Save Rules</button>
+          </div>
+        </div>
+        <hr class="divider">
+
+        <div class="add-secret-section">
+          <h3>Add Secret (Single)</h3>
+          <div class="add-secret-row">
+            <input type="text" x-model="newSecretKey" placeholder="Key (e.g. DATABASE_URL)" class="form-input w-200 monospace">
+            <input type="text" x-model="newSecretValue" placeholder="Value" class="form-input flex-grow">
+            <button @click="addSecret()" class="btn btn-primary">+ Add Secret</button>
+          </div>
+        </div>
+        <hr class="divider">
+
+        <div class="add-secret-section">
+          <h3>Bulk Import & Drag-Drop .env</h3>
+          <div class="bulk-import-container">
+            <textarea 
+              x-model="bulkEnvInput" 
+              @dragover.prevent 
+              @drop.prevent="handleFileDrop"
+              placeholder="Paste multiple KEY=value pairs here, or drag and drop a .env file into this box..."
+              class="form-input form-textarea monospace"
+              rows="4"
+            ></textarea>
+            <button @click="processBulkEnv()" class="btn btn-primary align-self-end mt-2">Import Bulk</button>
+          </div>
+        </div>
+        <hr class="divider">
+
+        <div class="list-container">
+          <template x-if="credentials.length === 0">
+            <div class="empty-state">
+              <span class="empty-icon">🔑</span>
+              <h4>No secrets yet</h4>
+              <p>Add your first secret key-value pair above.</p>
+            </div>
+          </template>
+
+          <template x-for="c in credentials" :key="c.id">
+            <div class="card card-secret">
+              <div class="secret-info" x-show="editingCredId !== c.id">
+                <span class="secret-key monospace" x-text="c.key"></span>
+                <span class="secret-value monospace" x-text="c.revealed ? c.decryptedValue : '••••••••••••'"></span>
+              </div>
+              <div class="secret-actions" x-show="editingCredId !== c.id">
+                <button @click="toggleSecretReveal(c)" class="btn-icon" :title="c.revealed ? 'Hide secret' : 'Reveal secret'">
+                  <span x-text="c.revealed ? '👁️' : '👁️‍🗨️'"></span>
+                </button>
+                <button @click="copySecret(c.id)" class="btn-icon" title="Copy to clipboard">⧉</button>
+                <button @click="startEditing(c)" class="btn-icon" title="Edit secret">✎</button>
+                <button @click="triggerDeleteSecret(c)" class="btn-icon text-danger" title="Delete secret">✕</button>
+              </div>
+
+              <div class="edit-cred-row" x-show="editingCredId === c.id">
+                <span class="secret-key monospace" x-text="c.key"></span>
+                <input type="text" x-model="editingCredValue" class="form-input flex-grow">
+                <button @click="saveCredentialEdit(c.id)" class="btn btn-primary">Save</button>
+                <button @click="editingCredId = null" class="btn btn-secondary">✕</button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="profile-danger-zone">
+          <button @click="triggerDeleteProfile(selectedProfile.id)" class="btn btn-danger-subtle">Delete Profile</button>
+        </div>
+      </div>
+
+      <div x-show="activeView === 'sessions'" class="view-panel">
+        <div class="panel-header">
+          <h2>Active Runtime Sessions</h2>
+          <span class="badge badge-success" x-text="activeSessions.length + ' active'"></span>
+        </div>
+        <hr class="divider">
+
+        <div class="list-container">
+          <template x-if="activeSessions.length === 0">
+            <div class="empty-state">
+              <span class="empty-icon">⌨</span>
+              <h4>No active sessions</h4>
+              <p>Sessions launched from profiles appear here.</p>
+            </div>
+          </template>
+
+          <template x-for="s in activeSessions" :key="s.id">
+            <div class="card card-session">
+              <div class="card-left">
+                <span class="session-icon">⌨</span>
+                <div class="card-details">
+                  <div class="session-title">
+                    <span class="session-shell bold" x-text="formatShell(s.shell)"></span>
+                    <span class="badge" x-text="'PID ' + (s.pid || 'Pending')"></span>
+                    <span class="badge" :class="s.status === 'Active' ? 'badge-success' : 'badge-danger'" x-text="formatStatus(s.status)"></span>
+                  </div>
+                  <p class="session-time" x-text="'Started: ' + formatTimestamp(s.started_at)"></p>
+                </div>
+              </div>
+              <div class="card-right">
+                <span class="session-expiry-badge" :class="s.expires_at ? 'badge-warning' : 'badge-neutral'" x-text="s.expires_at ? 'Expiring' : 'Persistent'"></span>
+                <button @click="triggerStopSession(s.id)" class="btn btn-danger-small">⏹ Terminate</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div x-show="activeView === 'scanner'" class="view-panel">
+        <div class="panel-header">
+          <h2>.env File Scanner</h2>
+          <span class="badge" x-text="scannedFiles.length + ' files found'"></span>
+        </div>
+        <hr class="divider">
+
+        <div class="toolbar">
+          <input type="text" x-model="scanDirPath" placeholder="Path to project directory" class="form-input flex-grow">
+          <button @click="scanDirectory()" class="btn btn-primary">Scan Directory</button>
+        </div>
+        <hr class="divider">
+
+        <div class="list-container">
+          <template x-if="scannedFiles.length === 0">
+            <div class="empty-state">
+              <span class="empty-icon">⌕</span>
+              <h4>Select a directory to scan</h4>
+              <p>EnvGuard will recursively scan the directory for env credentials.</p>
+            </div>
+          </template>
+
+          <template x-for="f in scannedFiles" :key="f.path">
+            <div class="card scanned-file-row">
+              <div class="scanned-left">
+                <span x-text="f.is_env ? '⚠' : '📄'" class="scanned-icon" :class="{ 'text-warning': f.is_env }"></span>
+                <span class="scanned-path monospace" x-text="f.path"></span>
+              </div>
+              <div class="scanned-right">
+                <span x-show="f.is_env" class="badge badge-danger">EXPOSED</span>
+                <span x-show="!f.is_env" class="badge badge-neutral">—</span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div x-show="activeView === 'settings'" class="view-panel">
+        <div class="panel-header">
+          <h2>System Settings</h2>
+        </div>
+        <hr class="divider">
+
+        <div class="settings-section">
+          <h3>Appearance</h3>
+          <div class="card card-settings">
+            <div class="settings-row">
+              <div class="settings-label">
+                <h4>Color Theme</h4>
+                <p>Switch between dark and light appearance.</p>
+              </div>
+              <button @click="toggleTheme()" class="btn btn-secondary" x-text="darkMode ? '☀ Switch to Light' : '🌙 Switch to Dark'"></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Vault Storage</h3>
+          <div class="card card-settings">
+            <div class="info-table">
+              <div class="info-row">
+                <span class="info-key">Engine</span>
+                <span class="info-val">SQLCipher — AES-256-GCM</span>
+              </div>
+              <div class="info-row">
+                <span class="info-key">KDF</span>
+                <span class="info-val">Argon2id (m=65536, t=3, p=4)</span>
+              </div>
+              <div class="info-row">
+                <span class="info-key">Location</span>
+                <span class="info-val monospace" x-text="vaultDir"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>About</h3>
+          <div class="card card-settings">
+            <div class="info-table">
+              <div class="info-row">
+                <span class="info-key">Version</span>
+                <span class="info-val">0.1.0</span>
+              </div>
+              <div class="info-row">
+                <span class="info-key">Runtime</span>
+                <span class="info-val">Tauri v2 + WebView</span>
+              </div>
+              <div class="info-row">
+                <span class="info-key">Author</span>
+                <span class="info-val">0xarchit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div x-show="showConfirm" x-cloak class="confirm-backdrop">
+    <div class="confirm-dialog">
+      <h3 x-text="confirmTitle"></h3>
+      <p x-text="confirmMsg"></p>
+      <div class="confirm-actions">
+        <button @click="showConfirm = false" class="btn btn-secondary">Cancel</button>
+        <button @click="executeConfirm()" class="btn btn-danger" x-text="confirmButtonText"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container">
+    <template x-for="t in toasts" :key="t.id">
+      <div class="toast" :class="'toast-' + t.type">
+        <div class="toast-content">
+          <span class="toast-icon" x-text="t.type === 'success' ? '✓' : (t.type === 'danger' ? '✕' : 'ℹ')"></span>
+          <span class="toast-text" x-text="t.message"></span>
+        </div>
+        <button @click="removeToast(t.id)" class="toast-close">✕</button>
+      </div>
+    </template>
+  </div>
+
+  <div x-show="loading" x-cloak class="loading-overlay">
+    <div class="loading-spinner"></div>
+    <p>Processing...</p>
+  </div>
+
+</body>
+</html>
