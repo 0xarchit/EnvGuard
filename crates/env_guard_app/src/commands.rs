@@ -336,23 +336,11 @@ pub async fn get_vault_directory() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn get_theme_preference() -> Result<bool, String> {
-    let config_dir = dirs::config_dir().ok_or("Cannot determine config directory")?;
-    let theme_file = config_dir.join("EnvGuard").join("theme.json");
-    if theme_file.exists() {
-        let content = std::fs::read_to_string(theme_file).map_err(|e| e.to_string())?;
-        let is_dark: bool = serde_json::from_str(&content).unwrap_or(true);
-        Ok(is_dark)
-    } else {
-        Ok(true)
-    }
+pub async fn get_app_config() -> Result<crate::config::AppConfig, String> {
+    Ok(crate::config::load_config().await)
 }
 
 #[tauri::command]
-pub async fn save_theme_preference(dark: bool) -> Result<(), String> {
-    let config_dir = dirs::config_dir().ok_or("Cannot determine config directory")?;
-    let path = config_dir.join("EnvGuard");
-    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-    let content = serde_json::to_string(&dark).map_err(|e| e.to_string())?;
-    std::fs::write(path.join("theme.json"), content).map_err(|e| e.to_string())
+pub async fn save_app_config(config: crate::config::AppConfig) -> Result<(), String> {
+    crate::config::save_config(&config).await
 }

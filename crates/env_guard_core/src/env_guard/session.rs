@@ -104,7 +104,7 @@ pub async fn inject_environment(credentials: &[PlaintextCredential]) -> Result<(
         .arg(&script)
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
-        .map_err(|e| SessionError::Io(e))?;
+        .map_err(SessionError::Io)?;
 
     if !output.status.success() {
         return Err(SessionError::PtyError("Failed to inject environment variables".into()));
@@ -127,7 +127,7 @@ pub async fn remove_environment(keys: &[String]) -> Result<(), SessionError> {
         .arg(&script)
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
-        .map_err(|e| SessionError::Io(e))?;
+        .map_err(SessionError::Io)?;
 
     if !output.status.success() {
         return Err(SessionError::PtyError("Failed to remove environment variables".into()));
@@ -145,6 +145,7 @@ pub async fn remove_environment(_keys: &[String]) -> Result<(), SessionError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 struct SessionExitStatus {
     success: bool,
     desc: String,
@@ -157,7 +158,7 @@ pub async fn spawn_session(
     pool: &SqlitePool,
     active_sessions: Option<Arc<Mutex<HashMap<Uuid, RuntimeSession>>>>,
 ) -> Result<RuntimeSession, SessionError> {
-    let shell_path = resolve_shell_path(&shell)?;
+    let _shell_path = resolve_shell_path(&shell)?;
     #[cfg(windows)]
     {
         inject_environment(&credentials).await?;
