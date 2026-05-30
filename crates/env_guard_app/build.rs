@@ -1,5 +1,5 @@
 fn main() {
-    slint_build::compile("ui/app.slint").unwrap();
+    tauri_build::build();
     println!("cargo:rerun-if-env-changed=SQLCIPHER_LIB_DIR");
     println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
     #[cfg(target_os = "windows")]
