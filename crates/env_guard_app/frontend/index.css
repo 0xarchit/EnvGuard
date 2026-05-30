@@ -603,7 +603,8 @@ input, button, select, textarea {
 }
 
 .card-profile {
-  height: 68px;
+  min-height: 68px;
+  height: auto;
   cursor: pointer;
 }
 
