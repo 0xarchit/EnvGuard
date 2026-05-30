@@ -54,27 +54,27 @@
 
       <nav class="sidebar-nav">
         <button @click="activeView = 'profiles'; loadProfiles()" :class="{ 'active': activeView === 'profiles' || activeView === 'profile-detail' }" class="nav-item">
-          <span class="nav-icon">📁</span>
+          <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
           <span class="nav-label">Profiles</span>
         </button>
         <button @click="activeView = 'sessions'; loadSessions()" :class="{ 'active': activeView === 'sessions' }" class="nav-item">
-          <span class="nav-icon">⌨</span>
+          <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6.01" y2="8"></line><line x1="10" y1="8" x2="10.01" y2="8"></line><line x1="14" y1="8" x2="14.01" y2="8"></line><line x1="18" y1="8" x2="18.01" y2="8"></line><line x1="8" y1="12" x2="8.01" y2="12"></line><line x1="12" y1="12" x2="12.01" y2="12"></line><line x1="16" y1="12" x2="16.01" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line></svg></span>
           <span class="nav-label">Sessions</span>
           <span x-show="activeSessions.length > 0" class="nav-badge" x-text="activeSessions.length"></span>
         </button>
         <button @click="activeView = 'scanner'" :class="{ 'active': activeView === 'scanner' }" class="nav-item">
-          <span class="nav-icon">⌕</span>
+          <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
           <span class="nav-label">Scanner</span>
         </button>
         <button @click="activeView = 'settings'; loadSettings()" :class="{ 'active': activeView === 'settings' }" class="nav-item">
-          <span class="nav-icon">⚙</span>
+          <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span>
           <span class="nav-label">Settings</span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
         <button @click="lock()" class="nav-item lock-btn">
-          <span class="nav-icon">🔒</span>
+          <span class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
           <span class="nav-label">Lock Vault</span>
           <span class="shortcut-hint">Ctrl+L</span>
         </button>
@@ -99,7 +99,7 @@
         <div class="list-container">
           <template x-if="profiles.length === 0">
             <div class="empty-state">
-              <span class="empty-icon">📁</span>
+              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
               <h4>No profiles yet</h4>
               <p>Create your first project profile above to get started.</p>
             </div>
@@ -107,9 +107,9 @@
           
           <template x-for="p in profiles" :key="p.id">
             <div class="card card-profile">
-              <div class="card-left">
+              <div class="card-left" @click="if (editingProfileId !== p.id) selectProfile(p.id)">
                 <span class="status-dot" :class="{ 'status-active': p.is_active }"></span>
-                <div class="card-details" x-show="editingProfileId !== p.id" @click="selectProfile(p.id)" style="cursor: pointer;">
+                <div class="card-details" x-show="editingProfileId !== p.id" style="cursor: pointer;">
                   <div style="display: flex; gap: 0.5rem; align-items: center;">
                     <h4 x-text="p.name" style="margin: 0;"></h4>
                     <span x-show="p.color" class="color-dot" :style="`background-color: ${p.color}; width: 12px; height: 12px; border-radius: 50%; display: inline-block;`"></span>
@@ -138,8 +138,8 @@
                 </div>
               </div>
               <div class="card-right" x-show="editingProfileId !== p.id">
-                <button @click="startEditingProfile(p)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" title="Edit Profile">✎</button>
-                <button @click="triggerDuplicateProfile(p.id)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" title="Duplicate Profile">⎘</button>
+                <button @click="startEditingProfile(p)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" title="Edit Profile"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+                <button @click="triggerDuplicateProfile(p.id)" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;" title="Duplicate Profile"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                 <button @click="startSession(p.id)" class="btn btn-secondary">Launch Session</button>
               </div>
             </div>
@@ -150,7 +150,7 @@
       <div x-show="activeView === 'profile-detail'" class="view-panel">
         <div class="panel-header">
           <div class="header-left">
-            <button @click="activeView = 'profiles'; selectedProfile = null; loadProfiles()" class="btn btn-secondary btn-back">← Back</button>
+            <button @click="activeView = 'profiles'; selectedProfile = null; loadProfiles()" class="btn btn-secondary btn-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg> Back</button>
             <h2 x-text="'Workspace: ' + (selectedProfile ? selectedProfile.name : '')"></h2>
           </div>
           <span class="badge" x-text="credentials.length + ' secrets'"></span>
@@ -202,7 +202,7 @@
         <div class="list-container">
           <template x-if="credentials.length === 0">
             <div class="empty-state">
-              <span class="empty-icon">🔑</span>
+              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg></span>
               <h4>No secrets yet</h4>
               <p>Add your first secret key-value pair above.</p>
             </div>
@@ -216,18 +216,18 @@
               </div>
               <div class="secret-actions" x-show="editingCredId !== c.id">
                 <button @click="toggleSecretReveal(c)" class="btn-icon" :title="c.revealed ? 'Hide secret' : 'Reveal secret'">
-                  <span x-text="c.revealed ? '👁️' : '👁️‍🗨️'"></span>
+                  <span x-html="c.revealed ? '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><path d=\'M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24\'></path><line x1=\'1\' y1=\'1\' x2=\'23\' y2=\'23\'></line></svg>' : '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><path d=\'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z\'></path><circle cx=\'12\' cy=\'12\' r=\'3\'></circle></svg>'"></span>
                 </button>
-                <button @click="copySecret(c.id)" class="btn-icon" title="Copy to clipboard">⧉</button>
-                <button @click="startEditing(c)" class="btn-icon" title="Edit secret">✎</button>
-                <button @click="triggerDeleteSecret(c)" class="btn-icon text-danger" title="Delete secret">✕</button>
+                <button @click="copySecret(c.id)" class="btn-icon" title="Copy to clipboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+                <button @click="startEditing(c)" class="btn-icon" title="Edit secret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+                <button @click="triggerDeleteSecret(c)" class="btn-icon text-danger" title="Delete secret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
               </div>
 
               <div class="edit-cred-row" x-show="editingCredId === c.id">
                 <span class="secret-key monospace" x-text="c.key"></span>
                 <input type="text" x-model="editingCredValue" class="form-input flex-grow">
                 <button @click="saveCredentialEdit(c.id)" class="btn btn-primary">Save</button>
-                <button @click="editingCredId = null" class="btn btn-secondary">✕</button>
+                <button @click="editingCredId = null" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
               </div>
             </div>
           </template>
@@ -248,7 +248,7 @@
         <div class="list-container">
           <template x-if="activeSessions.length === 0">
             <div class="empty-state">
-              <span class="empty-icon">⌨</span>
+              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6.01" y2="8"></line><line x1="10" y1="8" x2="10.01" y2="8"></line><line x1="14" y1="8" x2="14.01" y2="8"></line><line x1="18" y1="8" x2="18.01" y2="8"></line><line x1="8" y1="12" x2="8.01" y2="12"></line><line x1="12" y1="12" x2="12.01" y2="12"></line><line x1="16" y1="12" x2="16.01" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line></svg></span>
               <h4>No active sessions</h4>
               <p>Sessions launched from profiles appear here.</p>
             </div>
@@ -257,7 +257,7 @@
           <template x-for="s in activeSessions" :key="s.id">
             <div class="card card-session">
               <div class="card-left">
-                <span class="session-icon">⌨</span>
+                <span class="session-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6.01" y2="8"></line><line x1="10" y1="8" x2="10.01" y2="8"></line><line x1="14" y1="8" x2="14.01" y2="8"></line><line x1="18" y1="8" x2="18.01" y2="8"></line><line x1="8" y1="12" x2="8.01" y2="12"></line><line x1="12" y1="12" x2="12.01" y2="12"></line><line x1="16" y1="12" x2="16.01" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line></svg></span>
                 <div class="card-details">
                   <div class="session-title">
                     <span class="session-shell bold" x-text="formatShell(s.shell)"></span>
@@ -269,7 +269,7 @@
               </div>
               <div class="card-right">
                 <span class="session-expiry-badge" :class="s.expires_at ? 'badge-warning' : 'badge-neutral'" x-text="s.expires_at ? 'Expiring' : 'Persistent'"></span>
-                <button @click="triggerStopSession(s.id)" class="btn btn-danger-small">⏹ Terminate</button>
+                <button @click="triggerStopSession(s.id)" class="btn btn-danger-small"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> Terminate</button>
               </div>
             </div>
           </template>
@@ -292,7 +292,7 @@
         <div class="list-container">
           <template x-if="scannedFiles.length === 0">
             <div class="empty-state">
-              <span class="empty-icon">⌕</span>
+              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
               <h4>Select a directory to scan</h4>
               <p>EnvGuard will recursively scan the directory for env credentials.</p>
             </div>
@@ -301,7 +301,7 @@
           <template x-for="f in scannedFiles" :key="f.path">
             <div class="card scanned-file-row">
               <div class="scanned-left">
-                <span x-text="f.is_env ? '⚠' : '📄'" class="scanned-icon" :class="{ 'text-warning': f.is_env }"></span>
+                <span x-html="f.is_env ? '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><path d=\'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z\'></path><line x1=\'12\' y1=\'9\' x2=\'12\' y2=\'13\'></line><line x1=\'12\' y1=\'17\' x2=\'12.01\' y2=\'17\'></line></svg>' : '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><path d=\'M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z\'></path><polyline points=\'13 2 13 9 20 9\'></polyline></svg>'" class="scanned-icon" :class="{ 'text-warning': f.is_env }"></span>
                 <span class="scanned-path monospace" x-text="f.path"></span>
               </div>
               <div class="scanned-right">
@@ -327,7 +327,7 @@
                 <h4>Color Theme</h4>
                 <p>Switch between dark and light appearance.</p>
               </div>
-              <button @click="toggleTheme()" class="btn btn-secondary" x-text="appConfig.theme === 'dark' ? '☀ Switch to Light' : '🌙 Switch to Dark'"></button>
+              <button @click="toggleTheme()" class="btn btn-secondary" x-html="appConfig.theme === 'dark' ? '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><circle cx=\'12\' cy=\'12\' r=\'5\'></circle><line x1=\'12\' y1=\'1\' x2=\'12\' y2=\'3\'></line><line x1=\'12\' y1=\'21\' x2=\'12\' y2=\'23\'></line><line x1=\'4.22\' y1=\'4.22\' x2=\'5.64\' y2=\'5.64\'></line><line x1=\'18.36\' y1=\'18.36\' x2=\'19.78\' y2=\'19.78\'></line><line x1=\'1\' y1=\'12\' x2=\'3\' y2=\'12\'></line><line x1=\'21\' y1=\'12\' x2=\'23\' y2=\'12\'></line><line x1=\'4.22\' y1=\'19.78\' x2=\'5.64\' y2=\'18.36\'></line><line x1=\'18.36\' y1=\'5.64\' x2=\'19.78\' y2=\'4.22\'></line></svg> Switch to Light' : '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><path d=\'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z\'></path></svg> Switch to Dark'"></button>
             </div>
             <div class="settings-row">
               <div class="settings-label">
@@ -417,10 +417,10 @@
     <template x-for="t in toasts" :key="t.id">
       <div class="toast" :class="'toast-' + t.type">
         <div class="toast-content">
-          <span class="toast-icon" x-text="t.type === 'success' ? '✓' : (t.type === 'danger' ? '✕' : 'ℹ')"></span>
+          <span class="toast-icon" x-html="t.type === 'success' ? '✓' : (t.type === 'danger' ? '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><line x1=\'18\' y1=\'6\' x2=\'6\' y2=\'18\'></line><line x1=\'6\' y1=\'6\' x2=\'18\' y2=\'18\'></line></svg>' : 'ℹ')"></span>
           <span class="toast-text" x-text="t.message"></span>
         </div>
-        <button @click="removeToast(t.id)" class="toast-close">✕</button>
+        <button @click="removeToast(t.id)" class="toast-close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
     </template>
   </div>
