@@ -42,7 +42,10 @@ fn main() {
             commands::export_credentials,
             commands::update_credential_tags,
             commands::get_credential_history,
-            commands::change_master_password
+            commands::change_master_password,
+            commands::save_password_to_keychain,
+            commands::get_password_from_keychain,
+            commands::delete_password_from_keychain
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

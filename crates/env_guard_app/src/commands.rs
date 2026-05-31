@@ -71,13 +71,16 @@ pub async fn unlock_vault(
 ) -> Result<Vec<String>, String> {
     let base_dir = dirs::data_dir().ok_or("Cannot determine data directory")?;
     let db_path = base_dir.join("EnvGuard").join("vault.db");
-    
+
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    
+
     let mut sec_state = get_security_state(&db_path).await;
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
 
     if sec_state.failed_attempts >= 3 {
         let delay_ms = 2u64.pow(sec_state.failed_attempts - 3) * 1000;
@@ -86,7 +89,7 @@ pub async fn unlock_vault(
             return Err(format!("Too many failed attempts. Try again in {} seconds.", wait_sec));
         }
     }
-    
+
     let engine = match env_guard_core::env_guard::envGuard::unlock(&db_path, &password).await {
         Ok(engine) => engine,
         Err(e) => {
@@ -95,16 +98,16 @@ pub async fn unlock_vault(
             let log_entry = format!("Failed unlock attempt at {}", chrono::Utc::now().to_rfc3339());
             sec_state.failed_logs.push(log_entry);
             save_security_state(&db_path, &sec_state).await;
-            
+
             let s = e.to_string();
-            if s.contains("Decryption failed") || s.contains("Crypto error") {
+            if s.contains("Decryption failed") || s.contains("Crypto error") || s.contains("integrity") {
                 return Err("Incorrect master password".to_string());
             } else {
                 return Err(s);
             }
         }
     };
-        
+
     let logs = sec_state.failed_logs.clone();
     if sec_state.failed_attempts > 0 {
         sec_state.failed_attempts = 0;
@@ -136,11 +139,11 @@ pub async fn wipe_vault(
     if let Some(engine) = lock.take() {
         let _ = engine.lock().await;
     }
-    
+
     let base_dir = dirs::data_dir().ok_or("Cannot determine data directory")?;
     let db_path = base_dir.join("EnvGuard").join("vault.db");
     let salt_path = db_path.with_extension("salt");
-    
+
     let _ = std::fs::remove_file(&db_path);
     let _ = std::fs::remove_file(&salt_path);
     Ok(())
@@ -362,7 +365,7 @@ pub async fn start_session(
         "cmd" => ShellType::Cmd,
         other => ShellType::Custom(other.to_string()),
     };
-    
+
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
     engine.start_session(profile_uuid, shell_type)
@@ -406,7 +409,7 @@ pub async fn scan_for_env_files(
     let paths = engine.scan_for_env_files(std::path::Path::new(&path))
         .await
         .map_err(|e| e.to_string())?;
-        
+
     let result = paths.into_iter().map(|p| {
         let path_str = p.to_string_lossy().to_string();
         let is_env = p.file_name()
@@ -415,7 +418,7 @@ pub async fn scan_for_env_files(
             .unwrap_or(false);
         ScannedFile { path: path_str, is_env }
     }).collect();
-    
+
     Ok(result)
 }
 
@@ -473,16 +476,16 @@ pub fn generate_secure_token(length: usize, include_symbols: bool) -> Result<Str
     let mut rng = rand::thread_rng();
     let charset_alphanumeric = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let charset_symbols = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
-    
+
     let charset: &[u8] = if include_symbols { charset_symbols } else { charset_alphanumeric };
-    
+
     let token: String = (0..length)
         .map(|_| {
             let idx = rng.gen_range(0..charset.len());
             charset[idx] as char
         })
         .collect();
-        
+
     Ok(token)
 }
 
@@ -493,25 +496,20 @@ pub async fn export_credentials(
     export_path: String,
 ) -> Result<(), String> {
     use std::fs;
-    
+
     let mut exported_env = String::new();
-    
+
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    
+
     for (key, id_str) in credentials_to_export {
         let cred_uuid = Uuid::parse_str(&id_str).map_err(|e| e.to_string())?;
-        
-        // Decrypt the value
         let decrypted = engine.decrypt_credential(cred_uuid).await.map_err(|e| e.to_string())?;
-        
-        // Escape quotes and newlines in the value if necessary, though typical .env just wraps in double quotes
-        let escaped_val = decrypted.replace("\"", "\\\"");
+        let escaped_val = decrypted.replace('"', "\\\"");
         exported_env.push_str(&format!("{}=\"{}\"\n", key, escaped_val));
     }
-    
+
     fs::write(&export_path, exported_env).map_err(|e| e.to_string())?;
-    
     Ok(())
 }
 
@@ -542,7 +540,7 @@ pub async fn get_credential_history(
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
     let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
-    
+
     let hist = engine.get_credential_history(cred_uuid).await.map_err(|e| e.to_string())?;
     Ok(hist.into_iter().map(|(val, ts)| CredentialHistoryItem {
         value: val,
@@ -557,13 +555,35 @@ pub async fn change_master_password(
 ) -> Result<(), String> {
     let base_dir = dirs::data_dir().ok_or("Cannot determine data directory")?;
     let db_path = base_dir.join("EnvGuard").join("vault.db");
-    
+
     let mut lock = state.inner.lock().await;
     let engine = lock.as_mut().ok_or("Vault is locked")?;
-    
+
     engine.change_master_password(&db_path, &new_password)
         .await
         .map_err(|e| e.to_string())?;
-        
+
     Ok(())
+}
+
+fn get_keyring_entry() -> Result<keyring::Entry, String> {
+    keyring::Entry::new("envguard_vault", "master_password").map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_password_to_keychain(password: String) -> Result<(), String> {
+    let entry = get_keyring_entry()?;
+    entry.set_password(&password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_password_from_keychain() -> Result<String, String> {
+    let entry = get_keyring_entry()?;
+    entry.get_password().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_password_from_keychain() -> Result<(), String> {
+    let entry = get_keyring_entry()?;
+    entry.delete_password().map_err(|e| e.to_string())
 }
