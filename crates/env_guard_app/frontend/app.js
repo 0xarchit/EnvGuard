@@ -99,15 +99,6 @@ const registerApp = () => {
         }
       } catch (e) {}
 
-      window.addEventListener("keydown", (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
-          e.preventDefault();
-          if (!this.locked) {
-            this.lock();
-          }
-        }
-      });
-
       setInterval(() => {
         if (!this.locked) {
           this.syncSessionsQuietly();
