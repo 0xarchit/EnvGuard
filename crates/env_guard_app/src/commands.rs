@@ -437,3 +437,32 @@ pub fn generate_secure_token(length: usize, include_symbols: bool) -> Result<Str
         
     Ok(token)
 }
+
+#[tauri::command]
+pub async fn export_credentials(
+    state: State<'_, VaultState>,
+    credentials_to_export: Vec<(String, String)>,
+    export_path: String,
+) -> Result<(), String> {
+    use std::fs;
+    
+    let mut exported_env = String::new();
+    
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    
+    for (key, id_str) in credentials_to_export {
+        let cred_uuid = Uuid::parse_str(&id_str).map_err(|e| e.to_string())?;
+        
+        // Decrypt the value
+        let decrypted = engine.decrypt_credential(cred_uuid).await.map_err(|e| e.to_string())?;
+        
+        // Escape quotes and newlines in the value if necessary, though typical .env just wraps in double quotes
+        let escaped_val = decrypted.replace("\"", "\\\"");
+        exported_env.push_str(&format!("{}=\"{}\"\n", key, escaped_val));
+    }
+    
+    fs::write(&export_path, exported_env).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
