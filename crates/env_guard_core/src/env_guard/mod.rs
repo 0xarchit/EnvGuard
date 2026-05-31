@@ -43,6 +43,20 @@ impl envGuard {
         let hex_db_key = hex::encode(*db_key);
         let pool = storage::init_database(db_path, &hex_db_key).await?;
 
+        // Vault Integrity Check
+        let row = sqlx::query("PRAGMA integrity_check")
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e)))?;
+        
+        use sqlx::Row;
+        let integrity_result: String = row.get(0);
+        if integrity_result != "ok" {
+            return Err(ControllerError::Storage(crate::env_guard::errors::StorageError::Migration(
+                format!("Vault integrity check failed: {}", integrity_result)
+            )));
+        }
+
         Ok(Self {
             pool,
             master_key,
@@ -60,6 +74,42 @@ impl envGuard {
             }
         }
         self.pool.close().await;
+        Ok(())
+    }
+
+    pub async fn change_master_password(&mut self, db_path: &Path, new_password: &str) -> Result<(), ControllerError> {
+        let new_salt = crypto::generate_vault_salt();
+        let new_master_secret = crypto::derive_master_key(new_password, &new_salt)?;
+        let (new_db_key, new_master_key) = crypto::derive_split_keys(&new_master_secret)?;
+
+        let profiles = self.list_profiles().await?;
+        for p in profiles {
+            let creds = storage::get_credentials_for_profile(&self.pool, p.id).await?;
+            for c in creds {
+                let plain = crypto::decrypt_value(&c.encrypted_value, &c.nonce, &self.master_key)?;
+                let (new_enc, new_nonce) = crypto::encrypt_value(&plain, &new_master_key)?;
+                storage::update_credential_encryption(&self.pool, c.id, &new_enc, &new_nonce).await?;
+            }
+        }
+
+        let hist_rows = storage::get_all_history_ids_and_encryptions(&self.pool).await?;
+        for (hist_id, enc, non) in hist_rows {
+            let plain = crypto::decrypt_value(&enc, &non, &self.master_key)?;
+            let (new_enc, new_nonce) = crypto::encrypt_value(&plain, &new_master_key)?;
+            storage::update_history_encryption(&self.pool, hist_id, &new_enc, &new_nonce).await?;
+        }
+
+        let hex_new_db_key = hex::encode(*new_db_key);
+        sqlx::query(&format!("PRAGMA rekey = '{}'", hex_new_db_key))
+            .execute(&self.pool).await
+            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e)))?;
+
+        let salt_path = db_path.with_extension("salt");
+        std::fs::write(&salt_path, new_salt)
+            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?;
+
+        self.master_key = new_master_key;
+        
         Ok(())
     }
 
@@ -321,17 +371,21 @@ impl envGuard {
         Ok(())
     }
 
-    pub async fn stop_session(&self, session_id: Uuid) -> Result<(), ControllerError> {
+    pub async fn stop_session(&self, session_id: Uuid) -> Result<Vec<String>, ControllerError> {
         let mut sessions = self.active_sessions.lock().await;
+        let mut leaked = Vec::new();
         if let Some(session) = sessions.remove(&session_id) {
             let decrypted = self.get_decrypted_credentials(session.profile_id).await.unwrap_or_default();
             let keys: Vec<String> = decrypted.into_iter().map(|c| c.key).collect();
             let _ = session::remove_environment(&keys).await;
+            if let Ok(leak) = session::audit_environment(&keys).await {
+                leaked = leak;
+            }
 
             session::terminate_session(session_id, &self.pool).await
                 .map_err(ControllerError::Session)?;
         }
-        Ok(())
+        Ok(leaked)
     }
 
     pub async fn list_active_sessions(&self) -> Vec<RuntimeSession> {
