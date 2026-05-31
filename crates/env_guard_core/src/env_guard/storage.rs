@@ -85,6 +85,16 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
         );"
     ).execute(&pool).await?;
 
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS credential_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            credential_id TEXT NOT NULL REFERENCES credentials(id) ON DELETE CASCADE,
+            encrypted_value BLOB NOT NULL,
+            nonce BLOB NOT NULL,
+            updated_at TEXT NOT NULL
+        );"
+    ).execute(&pool).await?;
+
     Ok(pool)
 }
 
@@ -654,4 +664,57 @@ mod tests {
         let list = get_credentials_for_profile(&pool, profile_id).await.unwrap();
         assert_eq!(list.len(), 0);
     }
+}
+
+pub async fn insert_credential_history(
+    pool: &SqlitePool,
+    credential_id: Uuid,
+    encrypted_value: &[u8],
+    nonce: &[u8],
+    updated_at: DateTime<Utc>
+) -> Result<(), StorageError> {
+    sqlx::query(
+        "INSERT INTO credential_history (credential_id, encrypted_value, nonce, updated_at) VALUES (?, ?, ?, ?)"
+    )
+    .bind(credential_id.to_string())
+    .bind(encrypted_value)
+    .bind(nonce)
+    .bind(updated_at.to_rfc3339())
+    .execute(pool).await?;
+
+    sqlx::query(
+        "DELETE FROM credential_history WHERE id NOT IN (
+            SELECT id FROM credential_history 
+            WHERE credential_id = ? 
+            ORDER BY updated_at DESC LIMIT 3
+        ) AND credential_id = ?"
+    )
+    .bind(credential_id.to_string())
+    .bind(credential_id.to_string())
+    .execute(pool).await?;
+
+    Ok(())
+}
+
+pub async fn get_credential_history(
+    pool: &SqlitePool,
+    credential_id: Uuid,
+) -> Result<Vec<(Vec<u8>, Vec<u8>, DateTime<Utc>)>, StorageError> {
+    let rows = sqlx::query(
+        "SELECT encrypted_value, nonce, updated_at FROM credential_history WHERE credential_id = ? ORDER BY updated_at DESC"
+    )
+    .bind(credential_id.to_string())
+    .fetch_all(pool).await?;
+
+    let mut hist = Vec::new();
+    for row in rows {
+        let enc: Vec<u8> = row.get("encrypted_value");
+        let non: Vec<u8> = row.get("nonce");
+        let updated_at_str: String = row.get("updated_at");
+        let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or(Utc::now());
+        hist.push((enc, non, updated_at));
+    }
+    Ok(hist)
 }

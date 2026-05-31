@@ -39,7 +39,9 @@ fn main() {
             commands::save_app_config,
             commands::open_vault_directory,
             commands::generate_secure_token,
-            commands::export_credentials
+            commands::export_credentials,
+            commands::update_credential_tags,
+            commands::get_credential_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -289,12 +289,12 @@ pub async fn delete_credential(
 pub async fn update_credential(
     state: State<'_, VaultState>,
     credential_id: String,
-    value: String,
+    new_value: String,
 ) -> Result<(), String> {
     let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.update_credential(cred_uuid, &value)
+    engine.update_credential(cred_uuid, &new_value)
         .await
         .map_err(|e| e.to_string())
 }
@@ -465,4 +465,39 @@ pub async fn export_credentials(
     fs::write(&export_path, exported_env).map_err(|e| e.to_string())?;
     
     Ok(())
+}
+
+#[tauri::command]
+pub async fn update_credential_tags(
+    state: State<'_, VaultState>,
+    credential_id: String,
+    tags: Vec<String>,
+) -> Result<(), String> {
+    let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    engine.update_credential_tags(cred_uuid, tags).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct CredentialHistoryItem {
+    pub value: String,
+    pub updated_at: String,
+}
+
+#[tauri::command]
+pub async fn get_credential_history(
+    state: State<'_, VaultState>,
+    credential_id: String,
+) -> Result<Vec<CredentialHistoryItem>, String> {
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
+    
+    let hist = engine.get_credential_history(cred_uuid).await.map_err(|e| e.to_string())?;
+    Ok(hist.into_iter().map(|(val, ts)| CredentialHistoryItem {
+        value: val,
+        updated_at: ts.to_rfc3339(),
+    }).collect())
 }
