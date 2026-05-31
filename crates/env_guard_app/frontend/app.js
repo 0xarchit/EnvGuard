@@ -30,6 +30,7 @@ const registerApp = () => {
       return this.profiles.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)) || (p.tags && p.tags.some(t => t.toLowerCase().includes(q))));
     },
     rulesTimeout: "",
+    rulesRequireAuth: false,
     rulesShells: "",
     newSecretKey: "",
     newSecretValue: "",
@@ -50,6 +51,7 @@ const registerApp = () => {
     showCommandPalette: false,
     paletteSearchQuery: "",
     paletteSelectedIndex: 0,
+    previousFocusElement: null,
     get paletteResults() {
       if (!this.paletteSearchQuery.trim()) return [];
       const q = this.paletteSearchQuery.toLowerCase();
@@ -75,6 +77,18 @@ const registerApp = () => {
         this.paletteResults[this.paletteSelectedIndex].action();
         this.showCommandPalette = false;
         this.paletteSearchQuery = "";
+        if (this.previousFocusElement) {
+          this.previousFocusElement.focus();
+          this.previousFocusElement = null;
+        }
+      }
+    },
+
+    async openVaultDirectory() {
+      try {
+        await window.__TAURI__.core.invoke("open_vault_directory");
+      } catch (e) {
+        this.showToast("Failed to open directory: " + e, "danger");
       }
     },
 
@@ -126,6 +140,7 @@ const registerApp = () => {
           } else if (e.key.toLowerCase() === 'k') {
             e.preventDefault();
             if (!this.locked) {
+              this.previousFocusElement = document.activeElement;
               this.showCommandPalette = true;
               this.paletteSearchQuery = "";
               this.paletteSelectedIndex = 0;
@@ -138,10 +153,25 @@ const registerApp = () => {
           }
         }
       });
+
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+          if (this.appConfig.theme === "system") {
+            this.applyTheme();
+          }
+        });
+      }
     },
 
     applyTheme() {
-      if (this.appConfig.theme === "dark") {
+      let isDark = false;
+      if (this.appConfig.theme === "system") {
+        isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      } else {
+        isDark = this.appConfig.theme === "dark";
+      }
+
+      if (isDark) {
         document.body.classList.remove("light-theme");
       } else {
         document.body.classList.add("light-theme");
@@ -379,7 +409,8 @@ const registerApp = () => {
         const p = await window.__TAURI__.core.invoke("get_profile", { id });
         this.selectedProfile = p;
         this.rulesTimeout = p.session_rules.expiration_seconds !== null ? p.session_rules.expiration_seconds : "";
-        this.rulesShells = p.session_rules.allowed_shells.join(", ");
+        this.rulesShells = p.session_rules.allowed_shells.map(s => typeof s === 'string' ? s : Object.keys(s)[0]).join(", ");
+        this.rulesRequireAuth = p.session_rules.require_auth_on_resume || false;
         await this.loadCredentials(id);
         this.activeView = "profile-detail";
       } catch (e) {
@@ -411,7 +442,7 @@ const registerApp = () => {
         const rules = {
           expiration_seconds: timeout,
           allowed_shells: shells,
-          require_auth_on_resume: false
+          require_auth_on_resume: this.rulesRequireAuth
         };
         await window.__TAURI__.core.invoke("update_profile_rules", {
           id: this.selectedProfile.id,
@@ -480,8 +511,11 @@ const registerApp = () => {
           if (match) {
             const key = match[1].trim();
             let value = match[2].trim();
-            if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
-            else if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1);
+            if (value.startsWith('"') && value.endsWith('"')) {
+              value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\n/g, '\n');
+            } else if (value.startsWith("'") && value.endsWith("'")) {
+              value = value.slice(1, -1);
+            }
             
             await window.__TAURI__.core.invoke("add_credential", {
               profileId: this.selectedProfile.id,
@@ -609,7 +643,18 @@ const registerApp = () => {
     async startSession(profileId) {
       this.loading = true;
       try {
-        const shell = this.appConfig.default_shell;
+        let shell = this.appConfig.default_shell;
+        const p = this.profiles.find(x => x.id === profileId);
+        
+        if (p && p.session_rules && p.session_rules.allowed_shells && p.session_rules.allowed_shells.length > 0) {
+          const allowed = p.session_rules.allowed_shells;
+          const allowedLower = allowed.map(s => typeof s === 'string' ? s.toLowerCase() : Object.keys(s)[0].toLowerCase());
+          if (!allowedLower.includes(shell.toLowerCase())) {
+            shell = typeof allowed[0] === 'string' ? allowed[0] : Object.keys(allowed[0])[0];
+            this.showToast(`Default shell not allowed by profile rules. Falling back to ${shell}.`, 'warning');
+          }
+        }
+        
         await window.__TAURI__.core.invoke("start_session", { profileId, shell });
         this.showToast("Session injected! Every new terminal session will have these variables (restart your existing terminals).", "success");
         await this.loadSessions();

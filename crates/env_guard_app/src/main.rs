@@ -35,7 +35,8 @@ fn main() {
             commands::scan_for_env_files,
             commands::get_vault_directory,
             commands::get_app_config,
-            commands::save_app_config
+            commands::save_app_config,
+            commands::open_vault_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

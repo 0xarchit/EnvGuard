@@ -37,7 +37,12 @@
 
       <div class="unlock-footer">
         <button @click="triggerWipeVault()" class="btn-link text-danger">Reset & Wipe Vault</button>
-        <div class="vault-dir-info">Vault directory: <span x-text="vaultDir"></span></div>
+        <div class="vault-dir-info" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <span>Vault directory: <span x-text="vaultDir"></span></span>
+          <button @click="openVaultDirectory()" class="btn-icon" title="Open in File Explorer" style="width: 20px; height: 20px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -105,9 +110,9 @@
         <div class="list-container">
           <template x-if="profiles.length === 0">
             <div class="empty-state">
-              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
-              <h4>No profiles yet</h4>
-              <p>Create your first project profile above to get started.</p>
+              <span class="empty-icon" style="transform: scale(1.5); display: inline-block; margin-bottom: 24px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
+              <h4 style="font-size: 16px; margin-bottom: 8px;">No profiles yet</h4>
+              <p>Create your first project profile above to get started. Profiles help you organize different sets of credentials for different projects.</p>
             </div>
           </template>
           
@@ -180,6 +185,14 @@
               <label>Allowed shells (comma separated)</label>
               <input type="text" x-model="rulesShells" placeholder="e.g. bash, cmd, powershell" class="form-input">
             </div>
+          </div>
+          <div class="rules-row" style="margin-top: 10px;">
+            <div class="form-inline-group flex-grow">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" x-model="rulesRequireAuth" class="form-checkbox">
+                Require Auth on Resume
+              </label>
+            </div>
             <button @click="saveRules()" class="btn btn-secondary align-self-end">Save Rules</button>
           </div>
         </div>
@@ -214,9 +227,9 @@
         <div class="list-container">
           <template x-if="credentials.length === 0">
             <div class="empty-state">
-              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg></span>
-              <h4>No secrets yet</h4>
-              <p>Add your first secret key-value pair above.</p>
+              <span class="empty-icon" style="transform: scale(1.5); display: inline-block; margin-bottom: 24px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg></span>
+              <h4 style="font-size: 16px; margin-bottom: 8px;">No secrets yet</h4>
+              <p>Add your first secret key-value pair above, or drag and drop a .env file into the bulk import area.</p>
             </div>
           </template>
 
@@ -260,9 +273,9 @@
         <div class="list-container">
           <template x-if="activeSessions.length === 0">
             <div class="empty-state">
-              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6.01" y2="8"></line><line x1="10" y1="8" x2="10.01" y2="8"></line><line x1="14" y1="8" x2="14.01" y2="8"></line><line x1="18" y1="8" x2="18.01" y2="8"></line><line x1="8" y1="12" x2="8.01" y2="12"></line><line x1="12" y1="12" x2="12.01" y2="12"></line><line x1="16" y1="12" x2="16.01" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line></svg></span>
-              <h4>No active sessions</h4>
-              <p>Sessions launched from profiles appear here.</p>
+              <span class="empty-icon" style="transform: scale(1.5); display: inline-block; margin-bottom: 24px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6.01" y2="8"></line><line x1="10" y1="8" x2="10.01" y2="8"></line><line x1="14" y1="8" x2="14.01" y2="8"></line><line x1="18" y1="8" x2="18.01" y2="8"></line><line x1="8" y1="12" x2="8.01" y2="12"></line><line x1="12" y1="12" x2="12.01" y2="12"></line><line x1="16" y1="12" x2="16.01" y2="12"></line><line x1="7" y1="16" x2="17" y2="16"></line></svg></span>
+              <h4 style="font-size: 16px; margin-bottom: 8px;">No active sessions</h4>
+              <p>Go to your Profiles and click "Launch Session" to securely inject credentials into a new terminal environment.</p>
             </div>
           </template>
 
@@ -304,9 +317,9 @@
         <div class="list-container">
           <template x-if="scannedFiles.length === 0">
             <div class="empty-state">
-              <span class="empty-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
-              <h4>Select a directory to scan</h4>
-              <p>EnvGuard will recursively scan the directory for env credentials.</p>
+              <span class="empty-icon" style="transform: scale(1.5); display: inline-block; margin-bottom: 24px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+              <h4 style="font-size: 16px; margin-bottom: 8px;">Select a directory to scan</h4>
+              <p>Enter a local directory path above. EnvGuard will recursively search for any exposed .env files that you might want to securely import.</p>
             </div>
           </template>
 
@@ -337,16 +350,26 @@
             <div class="settings-row">
               <div class="settings-label">
                 <h4>Color Theme</h4>
-                <p>Switch between dark and light appearance.</p>
+                <p>Switch between dark, light, or system appearance.</p>
               </div>
-              <button @click="toggleTheme()" class="btn btn-secondary" x-html="appConfig.theme === 'dark' ? '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><circle cx=\'12\' cy=\'12\' r=\'5\'></circle><line x1=\'12\' y1=\'1\' x2=\'12\' y2=\'3\'></line><line x1=\'12\' y1=\'21\' x2=\'12\' y2=\'23\'></line><line x1=\'4.22\' y1=\'4.22\' x2=\'5.64\' y2=\'5.64\'></line><line x1=\'18.36\' y1=\'18.36\' x2=\'19.78\' y2=\'19.78\'></line><line x1=\'1\' y1=\'12\' x2=\'3\' y2=\'12\'></line><line x1=\'21\' y1=\'12\' x2=\'23\' y2=\'12\'></line><line x1=\'4.22\' y1=\'19.78\' x2=\'5.64\' y2=\'18.36\'></line><line x1=\'18.36\' y1=\'5.64\' x2=\'19.78\' y2=\'4.22\'></line></svg> Switch to Light' : '<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><path d=\'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z\'></path></svg> Switch to Dark'"></button>
+              <select x-model="appConfig.theme" @change="saveConfig()" class="form-input">
+                <option value="system">Follow System</option>
+                <option value="dark">Dark Theme</option>
+                <option value="light">Light Theme</option>
+              </select>
             </div>
             <div class="settings-row">
               <div class="settings-label">
                 <h4>Default Shell</h4>
                 <p>The shell selected by default when starting a new session.</p>
               </div>
-              <input type="text" x-model="appConfig.default_shell" @change="saveConfig()" class="form-input w-160">
+              <select x-model="appConfig.default_shell" @change="saveConfig()" class="form-input w-160">
+                <option value="powershell">PowerShell</option>
+                <option value="cmd">Command Prompt (cmd)</option>
+                <option value="bash">Bash</option>
+                <option value="zsh">Zsh</option>
+                <option value="fish">Fish</option>
+              </select>
             </div>
           </div>
         </div>
@@ -385,7 +408,12 @@
               </div>
               <div class="info-row">
                 <span class="info-key">Location</span>
-                <span class="info-val monospace" x-text="vaultDir"></span>
+                <span class="info-val monospace" style="display: flex; align-items: center; gap: 8px;">
+                  <span x-text="vaultDir"></span>
+                  <button @click="openVaultDirectory()" class="btn-icon" title="Open in File Explorer" style="width: 20px; height: 20px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                  </button>
+                </span>
               </div>
             </div>
           </div>

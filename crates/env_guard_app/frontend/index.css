@@ -568,12 +568,18 @@ input, button, select, textarea {
   justify-content: center;
   height: 100%;
   text-align: center;
+  padding: 40px;
+  background-color: var(--bg-tertiary);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  margin-top: 20px;
 }
 
 .empty-icon {
   font-size: 48px;
   color: var(--text-muted);
   margin-bottom: 16px;
+  opacity: 0.6;
 }
 
 .empty-state h4 {

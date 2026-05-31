@@ -387,3 +387,34 @@ pub async fn get_app_config() -> Result<crate::config::AppConfig, String> {
 pub async fn save_app_config(config: crate::config::AppConfig) -> Result<(), String> {
     crate::config::save_config(&config).await
 }
+
+#[tauri::command]
+pub async fn open_vault_directory() -> Result<(), String> {
+    if let Some(dir) = dirs::data_dir().map(|d| d.join("EnvGuard")) {
+        if dir.exists() {
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("explorer")
+                    .arg(&dir)
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+            }
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("open")
+                    .arg(&dir)
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+            }
+            #[cfg(target_os = "linux")]
+            {
+                std::process::Command::new("xdg-open")
+                    .arg(&dir)
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+            }
+            return Ok(());
+        }
+    }
+    Err("Vault directory not found".to_string())
+}
