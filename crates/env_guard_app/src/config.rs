@@ -15,6 +15,12 @@ pub struct AppConfig {
     pub default_shell: String,
     pub launch_at_startup: bool,
     pub start_locked: bool,
+    #[serde(default = "default_clipboard_timeout")]
+    pub clipboard_clear_timeout: u64,
+}
+
+fn default_clipboard_timeout() -> u64 {
+    30
 }
 
 impl Default for AppConfig {
@@ -28,6 +34,7 @@ impl Default for AppConfig {
             },
             launch_at_startup: false,
             start_locked: true,
+            clipboard_clear_timeout: 30,
         }
     }
 }

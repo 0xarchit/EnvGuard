@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use zeroize::Zeroizing;
 
@@ -219,6 +219,12 @@ impl envGuard {
         let meta_opt = storage::get_credential_metadata(&self.pool, credential_id).await?;
 
         if let Some((profile_id, key, created_at, tags)) = meta_opt {
+            let val_opt = storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
+            if let Some((old_enc, old_nonce)) = val_opt {
+                // Save history
+                storage::insert_credential_history(&self.pool, credential_id, &old_enc, &old_nonce, Utc::now()).await?;
+            }
+
             let (encrypted_value, nonce) = crypto::encrypt_value(new_value, &self.master_key)?;
             let cred = Credential {
                 id: credential_id,
@@ -235,6 +241,48 @@ impl envGuard {
         } else {
             Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
         }
+    }
+
+    pub async fn update_credential_tags(
+        &self,
+        credential_id: Uuid,
+        new_tags: Vec<String>,
+    ) -> Result<(), ControllerError> {
+        let meta_opt = storage::get_credential_metadata(&self.pool, credential_id).await?;
+        if let Some((profile_id, key, created_at, _old_tags)) = meta_opt {
+            let val_opt = storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
+            if let Some((encrypted_value, nonce)) = val_opt {
+                let cred = Credential {
+                    id: credential_id,
+                    profile_id,
+                    key,
+                    encrypted_value,
+                    nonce,
+                    created_at,
+                    updated_at: Utc::now(),
+                    tags: new_tags,
+                };
+                storage::upsert_credential(&self.pool, &cred).await?;
+                Ok(())
+            } else {
+                Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
+            }
+        } else {
+            Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
+        }
+    }
+
+    pub async fn get_credential_history(
+        &self,
+        credential_id: Uuid,
+    ) -> Result<Vec<(String, DateTime<Utc>)>, ControllerError> {
+        let rows = storage::get_credential_history(&self.pool, credential_id).await?;
+        let mut hist = Vec::new();
+        for (enc, nonce, ts) in rows {
+            let plaintext = crypto::decrypt_value(&enc, &nonce, &self.master_key)?;
+            hist.push((plaintext.to_string(), ts));
+        }
+        Ok(hist)
     }
 
     pub async fn start_session(

@@ -10,6 +10,29 @@
 </head>
 <body x-cloak x-data="envGuardApp()">
 
+  <div class="modal-overlay" x-show="showHistoryModal" @click.self="showHistoryModal = false" style="display: none; align-items: center; justify-content: center; z-index: 10000; padding: 20px;">
+    <div class="modal" style="width: 100%; max-width: 500px; border: 1px solid var(--border-color);">
+      <div class="modal-header">
+        <h3>Credential History</h3>
+        <button @click="showHistoryModal = false" class="btn-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+      </div>
+      <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+        <template x-if="credentialHistory.length === 0">
+          <p style="color: var(--text-muted); text-align: center; padding: 20px;">No history available.</p>
+        </template>
+        <template x-for="item in credentialHistory">
+          <div class="card" style="padding: 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="monospace" style="font-size: 13px;" x-text="item.value"></span>
+              <button @click="rollbackTo(item)" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;">Rollback</button>
+            </div>
+            <span style="font-size: 11px; color: var(--text-muted);" x-text="new Date(item.updated_at).toLocaleString()"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
   <div x-show="locked" x-cloak class="unlock-container">
     <div class="unlock-card">
       <div class="unlock-header">
@@ -200,9 +223,16 @@
 
         <div class="add-secret-section">
           <h3>Add Secret (Single)</h3>
-          <div class="add-secret-row" style="display: flex; gap: 8px; align-items: center;">
+          <div class="add-secret-row" style="display: flex; gap: 8px; align-items: center; position: relative;">
             <input type="text" x-model="newSecretKey" placeholder="Key (e.g. DATABASE_URL)" class="form-input w-200 monospace">
-            <input type="text" x-model="newSecretValue" placeholder="Value" class="form-input flex-grow">
+            <div style="position: relative; flex-grow: 1; display: flex;">
+              <input type="text" x-model="newSecretValue" placeholder="Value" class="form-input w-100">
+              <div style="position: absolute; right: 10px; top: 10px; font-size: 11px; font-weight: bold;" 
+                   x-show="newSecretValue.length > 0"
+                   :style="'color: ' + getEntropyColor(calculateEntropy(newSecretValue))"
+                   x-text="getEntropyLabel(calculateEntropy(newSecretValue))">
+              </div>
+            </div>
             <button @click="showGeneratorModal = true" class="btn-icon" title="Generate Secure Token" style="padding: 8px;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M21 13a9 9 0 1 1-3-7.7L21 8"></path></svg>
             </button>
@@ -270,9 +300,14 @@
 
           <template x-for="c in filteredCredentials" :key="c.id">
             <div class="card card-secret">
-              <div class="secret-info" x-show="editingCredId !== c.id" style="display: flex; align-items: center; gap: 12px;">
+              <div class="secret-info" x-show="editingCredId !== c.id" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <input type="checkbox" class="form-checkbox" :checked="selectedCredIds.includes(c.id)" @change="toggleSelectCred(c.id)">
                 <span class="secret-key monospace" x-text="c.key"></span>
+                <span class="secret-tags" x-show="c.tags && c.tags.length > 0">
+                  <template x-for="tag in c.tags" :key="tag">
+                    <span class="badge badge-primary" x-text="tag" style="margin-left: 6px; font-size: 10px;"></span>
+                  </template>
+                </span>
                 <span class="secret-value monospace" x-text="c.revealed ? c.decryptedValue : '••••••••••••'"></span>
               </div>
               <div class="secret-actions" x-show="editingCredId !== c.id">
@@ -281,12 +316,21 @@
                 </button>
                 <button @click="copySecret(c.id)" class="btn-icon" title="Copy to clipboard"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                 <button @click="startEditing(c)" class="btn-icon" title="Edit secret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>
+                <button @click="viewHistory(c.id)" class="btn-icon" title="View History"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"></path><path d="M3 8L8 3"></path><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path><polyline points="12 7 12 12 15 15"></polyline></svg></button>
                 <button @click="triggerDeleteSecret(c)" class="btn-icon text-danger" title="Delete secret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
               </div>
 
-              <div class="edit-cred-row" x-show="editingCredId === c.id">
+              <div class="edit-cred-row" x-show="editingCredId === c.id" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                 <span class="secret-key monospace" x-text="c.key"></span>
-                <input type="text" x-model="editingCredValue" class="form-input flex-grow">
+                <div style="position: relative; flex-grow: 1; display: flex;">
+                  <input type="text" x-model="editingCredValue" class="form-input w-100" placeholder="Value">
+                  <div style="position: absolute; right: 10px; top: 10px; font-size: 11px; font-weight: bold;" 
+                       x-show="editingCredValue.length > 0"
+                       :style="'color: ' + getEntropyColor(calculateEntropy(editingCredValue))"
+                       x-text="getEntropyLabel(calculateEntropy(editingCredValue))">
+                  </div>
+                </div>
+                <input type="text" x-model="editingCredTags" class="form-input" style="width: 150px;" placeholder="Tags (comma separated)">
                 <button @click="saveCredentialEdit(c.id)" class="btn btn-primary">Save</button>
                 <button @click="editingCredId = null" class="btn btn-secondary"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
               </div>
@@ -426,6 +470,19 @@
                 <p>Always require master password on app launch.</p>
               </div>
               <input type="checkbox" x-model="appConfig.start_locked" @change="saveConfig()" class="form-checkbox">
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Security</h3>
+          <div class="card card-settings">
+            <div class="settings-row">
+              <div class="settings-label">
+                <h4>Clipboard Clear Duration (seconds)</h4>
+                <p>Time before copied secrets are automatically erased from your clipboard. Enter 0 to disable.</p>
+              </div>
+              <input type="number" x-model.number="appConfig.clipboard_clear_timeout" @change="saveConfig()" class="form-input w-100" style="max-width: 100px;">
             </div>
           </div>
         </div>

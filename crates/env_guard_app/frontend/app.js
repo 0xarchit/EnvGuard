@@ -14,6 +14,7 @@ const registerApp = () => {
       default_shell: "powershell",
       launch_at_startup: false,
       start_locked: true,
+      clipboard_clear_timeout: 30,
     },
     profiles: [],
     newProfileName: "",
@@ -62,7 +63,11 @@ const registerApp = () => {
     },
     editingCredId: null,
     editingCredValue: "",
+    editingCredTags: "",
     showGeneratorModal: false,
+    showHistoryModal: false,
+    credentialHistory: [],
+    historyCredId: null,
     generatorLength: 32,
     generatorSymbols: true,
     generatedToken: "",
@@ -77,6 +82,31 @@ const registerApp = () => {
     confirmButtonText: "",
     confirmCallback: null,
     bulkEnvInput: "",
+
+    calculateEntropy(str) {
+      if (!str) return 0;
+      let charset = 0;
+      if (/[a-z]/.test(str)) charset += 26;
+      if (/[A-Z]/.test(str)) charset += 26;
+      if (/[0-9]/.test(str)) charset += 10;
+      if (/[^a-zA-Z0-9]/.test(str)) charset += 32;
+      if (charset === 0) return 0;
+      return str.length * Math.log2(charset);
+    },
+    getEntropyColor(entropy) {
+      if (entropy < 40) return 'var(--danger-color, #dc3545)';
+      if (entropy < 60) return '#e0a800';
+      if (entropy < 80) return 'var(--success-color, #28a745)';
+      return '#20c997';
+    },
+    getEntropyLabel(entropy) {
+      if (entropy === 0) return '';
+      if (entropy < 40) return 'Weak';
+      if (entropy < 60) return 'Fair';
+      if (entropy < 80) return 'Good';
+      return 'Strong';
+    },
+
     showCommandPalette: false,
     paletteSearchQuery: "",
     paletteSelectedIndex: 0,
@@ -584,13 +614,23 @@ const registerApp = () => {
       try {
         const val = await window.__TAURI__.core.invoke("decrypt_credential", { credentialId: id });
         await window.__TAURI__.core.invoke("plugin:clipboard-manager|write_text", { text: val });
-        this.showToast("Copied to clipboard (auto-clears in 30s)", "success");
-        setTimeout(async () => {
-          try {
-            await window.__TAURI__.core.invoke("plugin:clipboard-manager|write_text", { text: "" });
-            this.showToast("Clipboard cleared", "info");
-          } catch (err) {}
-        }, 30000);
+        
+        let timeout = parseInt(this.appConfig.clipboard_clear_timeout);
+        if (isNaN(timeout) || timeout < 0) {
+           timeout = 30;
+        }
+
+        if (timeout > 0) {
+          this.showToast(`Copied to clipboard (auto-clears in ${timeout}s)`, "success");
+          setTimeout(async () => {
+            try {
+              await window.__TAURI__.core.invoke("plugin:clipboard-manager|write_text", { text: "" });
+              this.showToast("Clipboard cleared", "info");
+            } catch (err) {}
+          }, timeout * 1000);
+        } else {
+          this.showToast("Copied to clipboard", "success");
+        }
       } catch (e) {
         this.showToast("Failed to copy: " + e, "danger");
       }
@@ -598,11 +638,40 @@ const registerApp = () => {
 
     async startEditing(cred) {
       this.editingCredId = cred.id;
+      this.editingCredTags = (cred.tags || []).join(", ");
       try {
         const val = await window.__TAURI__.core.invoke("decrypt_credential", { credentialId: cred.id });
         this.editingCredValue = val;
       } catch (e) {
         this.editingCredValue = "";
+      }
+    },
+
+    async viewHistory(id) {
+      this.historyCredId = id;
+      try {
+        this.credentialHistory = await window.__TAURI__.core.invoke("get_credential_history", { credentialId: id });
+        this.showHistoryModal = true;
+      } catch (e) {
+        this.showToast("Failed to fetch history", "danger");
+      }
+    },
+
+    async rollbackTo(histItem) {
+      if (!this.historyCredId) return;
+      this.loading = true;
+      try {
+        await window.__TAURI__.core.invoke("update_credential", {
+          credentialId: this.historyCredId,
+          newValue: histItem.value
+        });
+        await this.loadCredentials(this.selectedProfile.id);
+        this.showHistoryModal = false;
+        this.showToast("Rolled back successfully", "success");
+      } catch (e) {
+        this.showToast("Failed to rollback", "danger");
+      } finally {
+        this.loading = false;
       }
     },
 
@@ -615,14 +684,25 @@ const registerApp = () => {
       try {
         await window.__TAURI__.core.invoke("update_credential", {
           credentialId: id,
-          value: this.editingCredValue
+          newValue: this.editingCredValue
         });
+        
+        const tagArray = this.editingCredTags.split(",")
+          .map(t => t.trim())
+          .filter(t => t.length > 0);
+          
+        await window.__TAURI__.core.invoke("update_credential_tags", {
+          credentialId: id,
+          tags: tagArray
+        });
+        
+        await this.loadCredentials(this.selectedProfile.id);
         this.editingCredId = null;
         this.editingCredValue = "";
-        await this.loadCredentials(this.selectedProfile.id);
-        this.showToast("Secret updated", "success");
+        this.editingCredTags = "";
+        this.showToast("Secret updated successfully", "success");
       } catch (e) {
-        this.showToast("Failed to update secret: " + e, "danger");
+        this.showToast("Failed to update secret", "danger");
       } finally {
         this.loading = false;
       }
