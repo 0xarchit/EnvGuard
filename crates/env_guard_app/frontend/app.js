@@ -20,6 +20,8 @@ const registerApp = () => {
     },
     lastActivityTime: Date.now(),
     idleInterval: null,
+    keychainSaved: false,
+    biometricAvailable: false,
     
     changePasswordForm: {
       newPassword: '',
@@ -345,6 +347,79 @@ const registerApp = () => {
         this.showToast("Failed to unlock vault: " + e, "danger");
       } finally {
         this.loading = false;
+      }
+    },
+
+    async saveToKeychain() {
+      if (!this.password) {
+        this.showToast("Enter your password first, then save to keychain", "warning");
+        return;
+      }
+      try {
+        await window.__TAURI__.core.invoke("save_password_to_keychain", { password: this.password });
+        this.keychainSaved = true;
+        this.showToast("Password saved to OS Keychain (Windows Credential Manager)", "success");
+      } catch (e) {
+        this.showToast("Failed to save to keychain: " + e, "danger");
+      }
+    },
+
+    async unlockFromKeychain() {
+      this.loading = true;
+      try {
+        const storedPassword = await window.__TAURI__.core.invoke("get_password_from_keychain");
+        const logs = await window.__TAURI__.core.invoke("unlock_vault", { password: storedPassword });
+        this.password = "";
+        this.confirmPassword = "";
+        this.vaultExists = true;
+        this.locked = false;
+        this.activeView = "profiles";
+        await this.loadProfiles();
+        await this.loadSessions();
+        if (logs && logs.length > 0) {
+          this.showToast("Vault unlocked from keychain. Warning: " + logs.length + " failed attempt(s) detected.", "warning");
+        } else {
+          this.showToast("Vault unlocked from OS Keychain", "success");
+        }
+      } catch (e) {
+        if (e.toString().includes("No password found") || e.toString().includes("not found")) {
+          this.showToast("No saved password found in keychain", "warning");
+        } else {
+          this.showToast("Keychain unlock failed: " + e, "danger");
+        }
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async unlockWithBiometric() {
+      this.loading = true;
+      try {
+        const biometric = window.__TAURI__?.biometric;
+        if (!biometric) {
+          this.showToast("Biometric plugin not available", "danger");
+          return;
+        }
+        await biometric.authenticate({ reason: "Authenticate to unlock EnvGuard vault" });
+        await this.unlockFromKeychain();
+      } catch (e) {
+        if (e.toString().includes("User cancelled") || e.toString().includes("canceled")) {
+          this.showToast("Biometric authentication cancelled", "warning");
+        } else {
+          this.showToast("Biometric auth failed: " + e, "danger");
+        }
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async removeFromKeychain() {
+      try {
+        await window.__TAURI__.core.invoke("delete_password_from_keychain");
+        this.keychainSaved = false;
+        this.showToast("Password removed from OS Keychain", "success");
+      } catch (e) {
+        this.showToast("Failed to remove from keychain: " + e, "danger");
       }
     },
 

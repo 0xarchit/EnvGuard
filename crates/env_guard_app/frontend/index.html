@@ -57,6 +57,16 @@
       </div>
 
       <button @click="unlock()" class="btn btn-primary btn-block" x-text="vaultExists ? 'Unlock' : 'Create Vault'"></button>
+      <div class="unlock-quick-actions" x-show="vaultExists" x-cloak style="display:flex;gap:8px;margin-top:12px;margin-bottom:12px;">
+        <button @click="unlockFromKeychain()" class="btn btn-secondary btn-block" style="flex:1;" title="Unlock using password saved in OS Credential Manager">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          Keychain
+        </button>
+        <button @click="unlockWithBiometric()" class="btn btn-secondary btn-block" style="flex:1;" title="Authenticate with Windows Hello / Biometrics">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:6px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          Biometric
+        </button>
+      </div>
 
       <div class="unlock-footer">
         <button @click="triggerWipeVault()" class="btn-link text-danger">Reset & Wipe Vault</button>
@@ -510,6 +520,29 @@
                 <input type="password" x-model="changePasswordForm.confirmPassword" placeholder="Confirm New Password" class="form-input w-100">
                 <button @click="changeMasterPassword()" class="btn btn-primary w-100" :disabled="!changePasswordForm.newPassword || changePasswordForm.newPassword !== changePasswordForm.confirmPassword">Change Password</button>
                 <div x-show="changePasswordForm.status" x-text="changePasswordForm.status" style="font-size: 12px; color: var(--danger-color); margin-top: 4px;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>OS Keychain &amp; Biometrics</h3>
+          <div class="card card-settings">
+            <div class="settings-row" style="align-items: flex-start;">
+              <div class="settings-label">
+                <h4>Save to OS Keychain</h4>
+                <p>Store your master password in the OS Credential Manager (Windows) or Keychain (macOS) to enable one-click or biometric unlock.</p>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; min-width: 220px;">
+                <button @click="saveToKeychain()" class="btn btn-primary w-100">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:6px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                  Save Current Password to Keychain
+                </button>
+                <button @click="removeFromKeychain()" class="btn btn-danger w-100">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;margin-right:6px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
+                  Remove from Keychain
+                </button>
+                <p style="font-size:11px; color: var(--text-muted); margin:0;">Note: Make sure you're unlocked first. After saving, the Keychain and Biometric buttons appear on the lock screen.</p>
               </div>
             </div>
           </div>
