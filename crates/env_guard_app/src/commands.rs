@@ -418,3 +418,22 @@ pub async fn open_vault_directory() -> Result<(), String> {
     }
     Err("Vault directory not found".to_string())
 }
+
+#[tauri::command]
+pub fn generate_secure_token(length: usize, include_symbols: bool) -> Result<String, String> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let charset_alphanumeric = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let charset_symbols = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+    
+    let charset: &[u8] = if include_symbols { charset_symbols } else { charset_alphanumeric };
+    
+    let token: String = (0..length)
+        .map(|_| {
+            let idx = rng.gen_range(0..charset.len());
+            charset[idx] as char
+        })
+        .collect();
+        
+    Ok(token)
+}

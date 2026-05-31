@@ -200,9 +200,12 @@
 
         <div class="add-secret-section">
           <h3>Add Secret (Single)</h3>
-          <div class="add-secret-row">
+          <div class="add-secret-row" style="display: flex; gap: 8px; align-items: center;">
             <input type="text" x-model="newSecretKey" placeholder="Key (e.g. DATABASE_URL)" class="form-input w-200 monospace">
             <input type="text" x-model="newSecretValue" placeholder="Value" class="form-input flex-grow">
+            <button @click="showGeneratorModal = true" class="btn-icon" title="Generate Secure Token" style="padding: 8px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M21 13a9 9 0 1 1-3-7.7L21 8"></path></svg>
+            </button>
             <button @click="addSecret()" class="btn btn-primary">+ Add Secret</button>
           </div>
         </div>
@@ -225,6 +228,13 @@
         <hr class="divider">
 
         <div class="list-container">
+          <div class="toolbar" style="margin-bottom: 0.5rem;" x-show="credentials.length > 0">
+            <div class="search-input-wrapper flex-grow" style="position: relative;">
+              <span style="position: absolute; left: 10px; top: 8px; color: var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+              <input type="text" x-model="credSearchQuery" placeholder="Search secrets by key..." class="form-input w-100" style="padding-left: 30px; width: 100%;">
+            </div>
+          </div>
+
           <template x-if="credentials.length === 0">
             <div class="empty-state">
               <span class="empty-icon" style="transform: scale(1.5); display: inline-block; margin-bottom: 24px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg></span>
@@ -232,8 +242,14 @@
               <p>Add your first secret key-value pair above, or drag and drop a .env file into the bulk import area.</p>
             </div>
           </template>
+          
+          <template x-if="credentials.length > 0 && filteredCredentials.length === 0">
+            <div class="empty-state" style="padding: 20px;">
+              <p style="color: var(--text-muted);">No secrets match your search.</p>
+            </div>
+          </template>
 
-          <template x-for="c in credentials" :key="c.id">
+          <template x-for="c in filteredCredentials" :key="c.id">
             <div class="card card-secret">
               <div class="secret-info" x-show="editingCredId !== c.id">
                 <span class="secret-key monospace" x-text="c.key"></span>
@@ -489,6 +505,46 @@
       </div>
       <div class="palette-empty" x-show="paletteSearchQuery.trim() !== '' && paletteResults.length === 0">
         No results found.
+      </div>
+    </div>
+  </div>
+
+  <div x-show="showGeneratorModal" x-cloak class="confirm-backdrop" @click.self="showGeneratorModal = false">
+    <div class="confirm-dialog" style="min-width: 350px;">
+      <h3 style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"></path><path d="M21 13a9 9 0 1 1-3-7.7L21 8"></path></svg>
+        Generate Secure Token
+      </h3>
+      
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label class="form-label">Length</label>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <input type="range" min="8" max="128" x-model="generatorLength" style="flex-grow: 1;">
+          <input type="number" x-model="generatorLength" class="form-input" style="width: 70px;">
+        </div>
+      </div>
+      
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" x-model="generatorSymbols" class="form-checkbox">
+          Include special symbols (!@#$%)
+        </label>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <button @click="generateToken()" class="btn btn-secondary w-100">Generate</button>
+      </div>
+
+      <div class="form-group" x-show="generatedToken">
+        <label class="form-label">Generated Secret</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" x-model="generatedToken" class="form-input monospace flex-grow" readonly>
+          <button @click="useGeneratedToken()" class="btn btn-primary">Use</button>
+        </div>
+      </div>
+      
+      <div class="confirm-actions" style="margin-top: 16px; border-top: 1px solid var(--border-default); padding-top: 12px;">
+        <button @click="showGeneratorModal = false; generatedToken = ''" class="btn btn-secondary">Close</button>
       </div>
     </div>
   </div>

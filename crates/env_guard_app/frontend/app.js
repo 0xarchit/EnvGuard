@@ -35,8 +35,18 @@ const registerApp = () => {
     newSecretKey: "",
     newSecretValue: "",
     credentials: [],
+    credSearchQuery: "",
+    get filteredCredentials() {
+      if (!this.credSearchQuery.trim()) return this.credentials;
+      const q = this.credSearchQuery.toLowerCase();
+      return this.credentials.filter(c => c.key.toLowerCase().includes(q));
+    },
     editingCredId: null,
     editingCredValue: "",
+    showGeneratorModal: false,
+    generatorLength: 32,
+    generatorSymbols: true,
+    generatedToken: "",
     activeSessions: [],
     scanDirPath: "",
     scannedFiles: [],
@@ -599,9 +609,12 @@ const registerApp = () => {
     },
 
     triggerDeleteSecret(cred) {
+      const isHighValue = ['API_KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'PRIVATE_KEY'].some(kw => cred.key.toUpperCase().includes(kw));
+      const warningStr = isHighValue ? `\n\n⚠️ WARNING: '${cred.key}' looks like a high-value secret. Deleting this could break dependent services.` : '';
+      
       this.confirmDialog(
         "Delete Secret",
-        `Are you sure you want to delete '${cred.key}'? This cannot be undone.`,
+        `Are you sure you want to delete '${cred.key}'? This cannot be undone.${warningStr}`,
         "Delete",
         async () => {
           this.loading = true;
@@ -616,6 +629,23 @@ const registerApp = () => {
           }
         }
       );
+    },
+
+    async generateToken() {
+      try {
+        this.generatedToken = await window.__TAURI__.core.invoke("generate_secure_token", {
+          length: parseInt(this.generatorLength, 10) || 32,
+          includeSymbols: this.generatorSymbols
+        });
+      } catch (e) {
+        this.showToast("Failed to generate token", "danger");
+      }
+    },
+
+    useGeneratedToken() {
+      this.newSecretValue = this.generatedToken;
+      this.showGeneratorModal = false;
+      this.generatedToken = "";
     },
 
     triggerDeleteProfile(id) {
