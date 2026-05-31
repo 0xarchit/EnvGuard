@@ -41,7 +41,8 @@ fn main() {
             commands::generate_secure_token,
             commands::export_credentials,
             commands::update_credential_tags,
-            commands::get_credential_history
+            commands::get_credential_history,
+            commands::change_master_password
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

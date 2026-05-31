@@ -479,10 +479,38 @@
           <div class="card card-settings">
             <div class="settings-row">
               <div class="settings-label">
+                <h4>Idle Auto-Lock (minutes)</h4>
+                <p>Lock the vault after inactivity. Set to 0 to disable.</p>
+              </div>
+              <input type="number" x-model.number="appConfig.auto_lock_idle_minutes" @change="saveConfig()" class="form-input w-100" style="max-width: 100px;">
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">
+                <h4>Focus Loss Auto-Lock</h4>
+                <p>Instantly lock the vault when the application loses focus or is minimized.</p>
+              </div>
+              <input type="checkbox" x-model="appConfig.auto_lock_on_blur" @change="saveConfig()" class="form-checkbox">
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">
                 <h4>Clipboard Clear Duration (seconds)</h4>
                 <p>Time before copied secrets are automatically erased from your clipboard. Enter 0 to disable.</p>
               </div>
               <input type="number" x-model.number="appConfig.clipboard_clear_timeout" @change="saveConfig()" class="form-input w-100" style="max-width: 100px;">
+            </div>
+            </div>
+            <hr class="divider">
+            <div class="settings-row" style="align-items: flex-start;">
+              <div class="settings-label">
+                <h4>Change Master Password</h4>
+                <p>Warning: This will re-encrypt your entire vault and regenerate your encryption keys. This operation cannot be undone. If you lose your new master password, all data is permanently lost.</p>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; min-width: 250px;">
+                <input type="password" x-model="changePasswordForm.newPassword" placeholder="New Master Password" class="form-input w-100">
+                <input type="password" x-model="changePasswordForm.confirmPassword" placeholder="Confirm New Password" class="form-input w-100">
+                <button @click="changeMasterPassword()" class="btn btn-primary w-100" :disabled="!changePasswordForm.newPassword || changePasswordForm.newPassword !== changePasswordForm.confirmPassword">Change Password</button>
+                <div x-show="changePasswordForm.status" x-text="changePasswordForm.status" style="font-size: 12px; color: var(--danger-color); margin-top: 4px;"></div>
+              </div>
             </div>
           </div>
         </div>

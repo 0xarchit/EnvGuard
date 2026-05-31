@@ -17,11 +17,15 @@ pub struct AppConfig {
     pub start_locked: bool,
     #[serde(default = "default_clipboard_timeout")]
     pub clipboard_clear_timeout: u64,
+    #[serde(default = "default_auto_lock_idle")]
+    pub auto_lock_idle_minutes: u64,
+    #[serde(default = "default_auto_lock_on_blur")]
+    pub auto_lock_on_blur: bool,
 }
 
-fn default_clipboard_timeout() -> u64 {
-    30
-}
+fn default_clipboard_timeout() -> u64 { 30 }
+fn default_auto_lock_idle() -> u64 { 15 }
+fn default_auto_lock_on_blur() -> bool { false }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -35,6 +39,8 @@ impl Default for AppConfig {
             launch_at_startup: false,
             start_locked: true,
             clipboard_clear_timeout: 30,
+            auto_lock_idle_minutes: 15,
+            auto_lock_on_blur: false,
         }
     }
 }

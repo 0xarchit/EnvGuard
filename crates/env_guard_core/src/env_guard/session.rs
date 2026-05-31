@@ -135,6 +135,34 @@ pub async fn remove_environment(keys: &[String]) -> Result<(), SessionError> {
     Ok(())
 }
 
+#[cfg(windows)]
+pub async fn audit_environment(keys: &[String]) -> Result<Vec<String>, SessionError> {
+    if keys.is_empty() { return Ok(Vec::new()); }
+    let mut script = String::new();
+    script.push_str("$leaked = @();\n");
+    for key in keys {
+        let k = key.replace("'", "''");
+        script.push_str(&format!("if ([Environment]::GetEnvironmentVariable('{}', 'User')) {{ $leaked += '{}' }}\n", k, k));
+    }
+    script.push_str("if ($leaked.Count -gt 0) { Write-Output ($leaked -join ',') }\n");
+    
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(&script)
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(SessionError::Io)?;
+
+    let leaked_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if leaked_str.is_empty() {
+        Ok(Vec::new())
+    } else {
+        Ok(leaked_str.split(',').map(|s| s.to_string()).collect())
+    }
+}
+
 #[cfg(not(windows))]
 pub async fn inject_environment(_credentials: &[PlaintextCredential]) -> Result<(), SessionError> {
     Ok(())
@@ -143,6 +171,11 @@ pub async fn inject_environment(_credentials: &[PlaintextCredential]) -> Result<
 #[cfg(not(windows))]
 pub async fn remove_environment(_keys: &[String]) -> Result<(), SessionError> {
     Ok(())
+}
+
+#[cfg(not(windows))]
+pub async fn audit_environment(_keys: &[String]) -> Result<Vec<String>, SessionError> {
+    Ok(Vec::new())
 }
 
 #[allow(dead_code)]

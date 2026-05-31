@@ -301,6 +301,21 @@ pub async fn store_credential(pool: &SqlitePool, cred: &Credential) -> Result<()
     Ok(())
 }
 
+pub async fn update_credential_encryption(
+    pool: &SqlitePool,
+    id: Uuid,
+    encrypted_value: &[u8],
+    nonce: &[u8],
+) -> Result<(), StorageError> {
+    sqlx::query("UPDATE credentials SET encrypted_value = ?, nonce = ? WHERE id = ?")
+        .bind(encrypted_value)
+        .bind(nonce)
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn get_credentials_for_profile(
     pool: &SqlitePool,
     profile_id: Uuid,
@@ -717,4 +732,35 @@ pub async fn get_credential_history(
         hist.push((enc, non, updated_at));
     }
     Ok(hist)
+}
+
+pub async fn get_all_history_ids_and_encryptions(
+    pool: &SqlitePool,
+) -> Result<Vec<(i64, Vec<u8>, Vec<u8>)>, StorageError> {
+    let rows = sqlx::query("SELECT id, encrypted_value, nonce FROM credential_history")
+        .fetch_all(pool)
+        .await?;
+    let mut res = Vec::new();
+    for row in rows {
+        let id: i64 = row.get("id");
+        let enc: Vec<u8> = row.get("encrypted_value");
+        let non: Vec<u8> = row.get("nonce");
+        res.push((id, enc, non));
+    }
+    Ok(res)
+}
+
+pub async fn update_history_encryption(
+    pool: &SqlitePool,
+    id: i64,
+    encrypted_value: &[u8],
+    nonce: &[u8],
+) -> Result<(), StorageError> {
+    sqlx::query("UPDATE credential_history SET encrypted_value = ?, nonce = ? WHERE id = ?")
+        .bind(encrypted_value)
+        .bind(nonce)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }

@@ -10,11 +10,21 @@ const registerApp = () => {
     confirmErrorMsg: "",
     vaultDir: "",
     appConfig: {
-      theme: "dark",
+      theme: "system",
       default_shell: "powershell",
       launch_at_startup: false,
       start_locked: true,
       clipboard_clear_timeout: 30,
+      auto_lock_idle_minutes: 15,
+      auto_lock_on_blur: false
+    },
+    lastActivityTime: Date.now(),
+    idleInterval: null,
+    
+    changePasswordForm: {
+      newPassword: '',
+      confirmPassword: '',
+      status: ''
     },
     profiles: [],
     newProfileName: "",
@@ -220,6 +230,29 @@ const registerApp = () => {
           }
         });
       }
+
+      const updateActivity = () => { this.lastActivityTime = Date.now(); };
+      window.addEventListener('mousemove', updateActivity);
+      window.addEventListener('keydown', updateActivity);
+      window.addEventListener('click', updateActivity);
+      window.addEventListener('scroll', updateActivity);
+      
+      window.addEventListener('blur', () => {
+          if (this.appConfig.auto_lock_on_blur && !this.locked) {
+              this.lock();
+          }
+      });
+
+      this.idleInterval = setInterval(() => {
+          if (this.locked) return;
+          const idleMinutes = this.appConfig.auto_lock_idle_minutes;
+          if (idleMinutes > 0) {
+              const elapsed = Date.now() - this.lastActivityTime;
+              if (elapsed >= idleMinutes * 60 * 1000) {
+                  this.lock();
+              }
+          }
+      }, 30000);
     },
 
     applyTheme() {
@@ -294,7 +327,7 @@ const registerApp = () => {
 
       this.loading = true;
       try {
-        await window.__TAURI__.core.invoke("unlock_vault", { password: this.password });
+        const logs = await window.__TAURI__.core.invoke("unlock_vault", { password: this.password });
         this.password = "";
         this.confirmPassword = "";
         this.vaultExists = true;
@@ -302,7 +335,11 @@ const registerApp = () => {
         this.activeView = "profiles";
         await this.loadProfiles();
         await this.loadSessions();
-        this.showToast("Vault unlocked successfully", "success");
+        if (logs && logs.length > 0) {
+            this.showToast("Vault unlocked successfully. Warning: " + logs.length + " failed attempt(s) detected previously.", "warning");
+        } else {
+            this.showToast("Vault unlocked successfully", "success");
+        }
       } catch (e) {
         this.errorMsg = e;
         this.showToast("Failed to unlock vault: " + e, "danger");
@@ -370,6 +407,32 @@ const registerApp = () => {
         this.profiles = list;
       } catch (e) {
         this.showToast("Failed to load profiles", "danger");
+      }
+    },
+
+    async changeMasterPassword() {
+      if (this.changePasswordForm.newPassword.length < 8) {
+        this.changePasswordForm.status = "Password must be at least 8 characters.";
+        return;
+      }
+      if (this.changePasswordForm.newPassword !== this.changePasswordForm.confirmPassword) {
+        this.changePasswordForm.status = "Passwords do not match.";
+        return;
+      }
+      this.loading = true;
+      try {
+        await window.__TAURI__.core.invoke("change_master_password", {
+          newPassword: this.changePasswordForm.newPassword
+        });
+        this.showToast("Master password changed successfully. Re-locking vault for security...", "success");
+        this.changePasswordForm.newPassword = '';
+        this.changePasswordForm.confirmPassword = '';
+        this.changePasswordForm.status = '';
+        setTimeout(() => this.lock(), 1500);
+      } catch (e) {
+        this.changePasswordForm.status = "Failed to change password: " + e;
+      } finally {
+        this.loading = false;
       }
     },
 
@@ -873,9 +936,13 @@ const registerApp = () => {
         async () => {
           this.loading = true;
           try {
-            await window.__TAURI__.core.invoke("stop_session", { sessionId: id });
+            const leaked = await window.__TAURI__.core.invoke("stop_session", { sessionId: id });
             await this.loadSessions();
-            this.showToast("Session terminated", "success");
+            if (leaked && leaked.length > 0) {
+              this.showToast(`Session terminated. SECURITY WARNING: The following variables could not be cleared from the environment and may have leaked: ${leaked.join(", ")}`, "danger");
+            } else {
+              this.showToast("Session terminated securely", "success");
+            }
           } catch (e) {
             this.showToast("Failed to terminate session: " + e, "danger");
           } finally {

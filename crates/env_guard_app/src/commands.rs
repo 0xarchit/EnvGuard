@@ -41,11 +41,34 @@ fn map_rules_input(input: SessionRulesInput) -> SessionRules {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct SecurityState {
+    failed_attempts: u32,
+    last_failed_attempt_ms: u64,
+    failed_logs: Vec<String>,
+}
+
+async fn get_security_state(db_path: &std::path::Path) -> SecurityState {
+    let sec_path = db_path.with_extension("security");
+    if let Ok(data) = tokio::fs::read_to_string(&sec_path).await {
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        SecurityState::default()
+    }
+}
+
+async fn save_security_state(db_path: &std::path::Path, state: &SecurityState) {
+    let sec_path = db_path.with_extension("security");
+    if let Ok(data) = serde_json::to_string(state) {
+        let _ = tokio::fs::write(&sec_path, data).await;
+    }
+}
+
 #[tauri::command]
 pub async fn unlock_vault(
     state: State<'_, VaultState>,
     password: String,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     let base_dir = dirs::data_dir().ok_or("Cannot determine data directory")?;
     let db_path = base_dir.join("EnvGuard").join("vault.db");
     
@@ -53,20 +76,45 @@ pub async fn unlock_vault(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     
-    let engine = env_guard_core::env_guard::envGuard::unlock(&db_path, &password)
-        .await
-        .map_err(|e| {
+    let mut sec_state = get_security_state(&db_path).await;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+
+    if sec_state.failed_attempts >= 3 {
+        let delay_ms = 2u64.pow(sec_state.failed_attempts - 3) * 1000;
+        if now < sec_state.last_failed_attempt_ms + delay_ms {
+            let wait_sec = ((sec_state.last_failed_attempt_ms + delay_ms - now) / 1000) + 1;
+            return Err(format!("Too many failed attempts. Try again in {} seconds.", wait_sec));
+        }
+    }
+    
+    let engine = match env_guard_core::env_guard::envGuard::unlock(&db_path, &password).await {
+        Ok(engine) => engine,
+        Err(e) => {
+            sec_state.failed_attempts += 1;
+            sec_state.last_failed_attempt_ms = now;
+            let log_entry = format!("Failed unlock attempt at {}", chrono::Utc::now().to_rfc3339());
+            sec_state.failed_logs.push(log_entry);
+            save_security_state(&db_path, &sec_state).await;
+            
             let s = e.to_string();
             if s.contains("Decryption failed") || s.contains("Crypto error") {
-                "Incorrect master password".to_string()
+                return Err("Incorrect master password".to_string());
             } else {
-                s
+                return Err(s);
             }
-        })?;
+        }
+    };
         
+    let logs = sec_state.failed_logs.clone();
+    if sec_state.failed_attempts > 0 {
+        sec_state.failed_attempts = 0;
+        sec_state.failed_logs.clear();
+        save_security_state(&db_path, &sec_state).await;
+    }
+
     let mut lock = state.inner.lock().await;
     *lock = Some(engine);
-    Ok(())
+    Ok(logs)
 }
 
 #[tauri::command]
@@ -329,7 +377,7 @@ pub async fn start_session(
 pub async fn stop_session(
     state: State<'_, VaultState>,
     session_id: String,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
@@ -500,4 +548,22 @@ pub async fn get_credential_history(
         value: val,
         updated_at: ts.to_rfc3339(),
     }).collect())
+}
+
+#[tauri::command]
+pub async fn change_master_password(
+    state: State<'_, VaultState>,
+    new_password: String,
+) -> Result<(), String> {
+    let base_dir = dirs::data_dir().ok_or("Cannot determine data directory")?;
+    let db_path = base_dir.join("EnvGuard").join("vault.db");
+    
+    let mut lock = state.inner.lock().await;
+    let engine = lock.as_mut().ok_or("Vault is locked")?;
+    
+    engine.change_master_password(&db_path, &new_password)
+        .await
+        .map_err(|e| e.to_string())?;
+        
+    Ok(())
 }
