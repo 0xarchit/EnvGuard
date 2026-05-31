@@ -228,10 +228,29 @@
         <hr class="divider">
 
         <div class="list-container">
-          <div class="toolbar" style="margin-bottom: 0.5rem;" x-show="credentials.length > 0">
-            <div class="search-input-wrapper flex-grow" style="position: relative;">
+          <div class="toolbar" style="margin-bottom: 0.5rem; display: flex; gap: 8px; flex-wrap: wrap;" x-show="credentials.length > 0">
+            <div class="search-input-wrapper flex-grow" style="position: relative; min-width: 200px;">
               <span style="position: absolute; left: 10px; top: 8px; color: var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
               <input type="text" x-model="credSearchQuery" placeholder="Search secrets by key..." class="form-input w-100" style="padding-left: 30px; width: 100%;">
+            </div>
+            
+            <div class="bulk-actions" style="display: flex; gap: 8px; align-items: center;" x-show="filteredCredentials.length > 0">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 0 8px; color: var(--text-muted);">
+                <input type="checkbox" class="form-checkbox" :checked="allSelected" @change="toggleSelectAll()">
+                <span style="font-size: 13px;">Select All</span>
+              </label>
+              
+              <template x-if="selectedCredIds.length > 0">
+                <div style="display: flex; gap: 8px;">
+                  <button @click="bulkExport()" class="btn btn-secondary" style="padding: 4px 10px; font-size: 13px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Export
+                  </button>
+                  <button @click="bulkDelete()" class="btn btn-danger-subtle" style="padding: 4px 10px; font-size: 13px;">
+                    Delete
+                  </button>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -251,7 +270,8 @@
 
           <template x-for="c in filteredCredentials" :key="c.id">
             <div class="card card-secret">
-              <div class="secret-info" x-show="editingCredId !== c.id">
+              <div class="secret-info" x-show="editingCredId !== c.id" style="display: flex; align-items: center; gap: 12px;">
+                <input type="checkbox" class="form-checkbox" :checked="selectedCredIds.includes(c.id)" @change="toggleSelectCred(c.id)">
                 <span class="secret-key monospace" x-text="c.key"></span>
                 <span class="secret-value monospace" x-text="c.revealed ? c.decryptedValue : '••••••••••••'"></span>
               </div>

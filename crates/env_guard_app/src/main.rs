@@ -11,6 +11,7 @@ fn main() {
     tauri::Builder::default()
         .manage(VaultState::default())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::unlock_vault,
             commands::lock_vault,
@@ -37,7 +38,8 @@ fn main() {
             commands::get_app_config,
             commands::save_app_config,
             commands::open_vault_directory,
-            commands::generate_secure_token
+            commands::generate_secure_token,
+            commands::export_credentials
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -41,6 +41,25 @@ const registerApp = () => {
       const q = this.credSearchQuery.toLowerCase();
       return this.credentials.filter(c => c.key.toLowerCase().includes(q));
     },
+    selectedCredIds: [],
+    get allSelected() {
+      return this.filteredCredentials.length > 0 && this.selectedCredIds.length === this.filteredCredentials.length;
+    },
+    toggleSelectAll() {
+      if (this.allSelected) {
+        this.selectedCredIds = [];
+      } else {
+        this.selectedCredIds = this.filteredCredentials.map(c => c.id);
+      }
+    },
+    toggleSelectCred(id) {
+      const idx = this.selectedCredIds.indexOf(id);
+      if (idx > -1) {
+        this.selectedCredIds.splice(idx, 1);
+      } else {
+        this.selectedCredIds.push(id);
+      }
+    },
     editingCredId: null,
     editingCredValue: "",
     showGeneratorModal: false,
@@ -431,6 +450,7 @@ const registerApp = () => {
     },
 
     async loadCredentials(profileId) {
+      this.selectedCredIds = [];
       try {
         const list = await window.__TAURI__.core.invoke("list_credentials", { profileId });
         this.credentials = list.map(c => ({
@@ -439,7 +459,7 @@ const registerApp = () => {
           decryptedValue: ""
         }));
       } catch (e) {
-        this.showToast("Failed to load credentials", "danger");
+        console.error("Failed to load credentials:", e);
       }
     },
 
@@ -646,6 +666,59 @@ const registerApp = () => {
       this.newSecretValue = this.generatedToken;
       this.showGeneratorModal = false;
       this.generatedToken = "";
+    },
+
+    async bulkDelete() {
+      if (this.selectedCredIds.length === 0) return;
+      this.confirmDialog(
+        "Delete Selected Secrets",
+        `Are you sure you want to delete ${this.selectedCredIds.length} secrets? This cannot be undone.`,
+        "Delete",
+        async () => {
+          this.loading = true;
+          try {
+            for (const id of this.selectedCredIds) {
+              await window.__TAURI__.core.invoke("delete_credential", { credentialId: id });
+            }
+            this.selectedCredIds = [];
+            await this.loadCredentials(this.selectedProfile.id);
+            this.showToast("Secrets deleted", "success");
+          } catch (e) {
+            this.showToast("Failed to delete some secrets", "danger");
+          } finally {
+            this.loading = false;
+          }
+        }
+      );
+    },
+
+    async bulkExport() {
+      if (this.selectedCredIds.length === 0) return;
+      try {
+        const { save } = window.__TAURI__.dialog;
+        const path = await save({
+          title: "Export .env File",
+          filters: [{ name: "Environment File", extensions: ["env", "txt"] }]
+        });
+        if (!path) return;
+
+        this.loading = true;
+        const toExport = this.credentials
+          .filter(c => this.selectedCredIds.includes(c.id))
+          .map(c => [c.key, c.id]);
+        
+        await window.__TAURI__.core.invoke("export_credentials", {
+          credentialsToExport: toExport,
+          exportPath: path
+        });
+        
+        this.selectedCredIds = [];
+        this.showToast("Exported successfully to " + path, "success");
+      } catch (e) {
+        this.showToast("Export failed: " + e, "danger");
+      } finally {
+        this.loading = false;
+      }
     },
 
     triggerDeleteProfile(id) {

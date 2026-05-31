@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capabilities","local":true,"windows":["main"],"permissions":["core:default","clipboard-manager:allow-write-text","clipboard-manager:allow-read-text"]}}
+{"default":{"identifier":"default","description":"Default capabilities","local":true,"windows":["main"],"permissions":["core:default","clipboard-manager:allow-write-text","clipboard-manager:allow-read-text","dialog:default","dialog:allow-save"]}}
