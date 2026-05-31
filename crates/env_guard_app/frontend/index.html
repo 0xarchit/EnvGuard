@@ -89,8 +89,14 @@
         </div>
         <hr class="divider">
         
+        <div class="toolbar" style="margin-bottom: 0.5rem;">
+          <div class="search-input-wrapper flex-grow" style="position: relative;">
+            <span style="position: absolute; left: 10px; top: 8px; color: var(--text-muted);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+            <input type="text" x-model="searchQuery" placeholder="Search profiles by name, description, or tag..." class="form-input w-100" style="padding-left: 30px; width: 100%;">
+          </div>
+        </div>
         <div class="toolbar">
-          <input type="text" x-model="newProfileName" placeholder="Profile name" class="form-input">
+          <input id="newProfileInput" type="text" x-model="newProfileName" placeholder="Profile name" class="form-input">
           <input type="text" x-model="newProfileDesc" placeholder="Description" class="form-input flex-grow">
           <button @click="createProfile()" class="btn btn-primary">+ Create Profile</button>
         </div>
@@ -105,7 +111,13 @@
             </div>
           </template>
           
-          <template x-for="p in profiles" :key="p.id">
+          <template x-if="profiles.length > 0 && filteredProfiles.length === 0">
+            <div class="empty-state" style="padding: 20px;">
+              <p style="color: var(--text-muted);">No profiles match your search.</p>
+            </div>
+          </template>
+
+          <template x-for="p in filteredProfiles" :key="p.id">
             <div class="card card-profile">
               <div class="card-left" @click="if (editingProfileId !== p.id) selectProfile(p.id)">
                 <span class="status-dot" :class="{ 'status-active': p.is_active }"></span>
@@ -428,6 +440,29 @@
   <div x-show="loading" x-cloak class="loading-overlay">
     <div class="loading-spinner"></div>
     <p>Processing...</p>
+  </div>
+
+  <div x-show="showCommandPalette" x-cloak class="confirm-backdrop" @click.self="showCommandPalette = false">
+    <div class="command-palette">
+      <div class="palette-input-wrapper">
+        <span class="palette-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+        <input id="paletteSearchInput" type="text" x-model="paletteSearchQuery" placeholder="Type a command or search..." class="palette-input" 
+          @keydown.down.prevent="paletteSelectedIndex = Math.min(paletteSelectedIndex + 1, paletteResults.length - 1)"
+          @keydown.up.prevent="paletteSelectedIndex = Math.max(paletteSelectedIndex - 1, 0)"
+          @keydown.enter.prevent="executePaletteAction()">
+      </div>
+      <div class="palette-results" x-show="paletteResults.length > 0">
+        <template x-for="(res, index) in paletteResults" :key="index">
+          <div class="palette-item" :class="{'selected': index === paletteSelectedIndex}" @click="paletteSelectedIndex = index; executePaletteAction()" @mouseover="paletteSelectedIndex = index">
+            <span class="palette-item-icon" x-html="res.icon"></span>
+            <span class="palette-item-text" x-text="res.text"></span>
+          </div>
+        </template>
+      </div>
+      <div class="palette-empty" x-show="paletteSearchQuery.trim() !== '' && paletteResults.length === 0">
+        No results found.
+      </div>
+    </div>
   </div>
 
 </body>

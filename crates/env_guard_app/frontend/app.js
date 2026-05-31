@@ -23,6 +23,12 @@ const registerApp = () => {
     editProfileDesc: "",
     editProfileColor: "",
     editProfileTags: "",
+    searchQuery: "",
+    get filteredProfiles() {
+      if (!this.searchQuery.trim()) return this.profiles;
+      const q = this.searchQuery.toLowerCase();
+      return this.profiles.filter(p => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)) || (p.tags && p.tags.some(t => t.toLowerCase().includes(q))));
+    },
     rulesTimeout: "",
     rulesShells: "",
     newSecretKey: "",
@@ -41,6 +47,36 @@ const registerApp = () => {
     confirmButtonText: "",
     confirmCallback: null,
     bulkEnvInput: "",
+    showCommandPalette: false,
+    paletteSearchQuery: "",
+    paletteSelectedIndex: 0,
+    get paletteResults() {
+      if (!this.paletteSearchQuery.trim()) return [];
+      const q = this.paletteSearchQuery.toLowerCase();
+      let results = [];
+      
+      this.profiles.forEach(p => {
+        if (p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q))) {
+          results.push({ type: 'profile', text: `Profile: ${p.name}`, icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>', action: () => { this.activeView = 'profiles'; this.selectProfile(p.id); } });
+        }
+      });
+      
+      const views = ['profiles', 'sessions', 'scanner', 'settings'];
+      views.forEach(v => {
+        if (v.toLowerCase().includes(q)) {
+          results.push({ type: 'view', text: `Navigate: ${v.charAt(0).toUpperCase() + v.slice(1)}`, icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>', action: () => { this.activeView = v; } });
+        }
+      });
+
+      return results.slice(0, 10);
+    },
+    executePaletteAction() {
+      if (this.paletteResults.length > 0 && this.paletteSelectedIndex < this.paletteResults.length) {
+        this.paletteResults[this.paletteSelectedIndex].action();
+        this.showCommandPalette = false;
+        this.paletteSearchQuery = "";
+      }
+    },
 
     async init() {
       try {
@@ -77,6 +113,40 @@ const registerApp = () => {
           this.syncSessionsQuietly();
         }
       }, 1000);
+
+      window.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          if (e.key.toLowerCase() === 'n') {
+            e.preventDefault();
+            if (!this.locked) {
+              this.activeView = 'profiles';
+              document.getElementById('newProfileInput')?.focus();
+            }
+          } else if (e.key.toLowerCase() === 'l') {
+            e.preventDefault();
+            if (!this.locked) {
+              this.lock();
+            }
+          } else if (e.key === ',') {
+            e.preventDefault();
+            if (!this.locked) {
+              this.activeView = 'settings';
+            }
+          } else if (e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            if (!this.locked) {
+              this.showCommandPalette = true;
+              this.paletteSearchQuery = "";
+              this.paletteSelectedIndex = 0;
+              setTimeout(() => document.getElementById('paletteSearchInput')?.focus(), 50);
+            }
+          }
+        } else if (e.key === 'Escape') {
+          if (this.showCommandPalette) {
+            this.showCommandPalette = false;
+          }
+        }
+      });
     },
 
     applyTheme() {

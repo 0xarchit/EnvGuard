@@ -970,3 +970,72 @@ input, button, select, textarea {
     padding: 0;
   }
 }
+
+.command-palette {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  width: 500px;
+  max-width: 90vw;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  overflow: hidden;
+  margin-top: -10vh;
+}
+
+.palette-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.palette-icon {
+  color: var(--text-muted);
+  display: flex;
+  margin-right: 12px;
+}
+
+.palette-input {
+  flex-grow: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 16px;
+  outline: none;
+}
+
+.palette-results {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.palette-item.selected, .palette-item:hover {
+  background-color: var(--bg-elevated);
+}
+
+.palette-item-icon {
+  color: var(--text-muted);
+  display: flex;
+  margin-right: 12px;
+}
+
+.palette-item-text {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.palette-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 14px;
+}
