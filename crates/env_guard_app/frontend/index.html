@@ -210,25 +210,53 @@
         <div class="rules-section">
           <h3>Session Rules</h3>
           <div class="rules-row">
-            <div class="form-inline-group">
+            <div class="form-inline-group w-160">
               <label>Timeout (seconds)</label>
-              <input type="number" x-model="rulesTimeout" placeholder="Persistent" class="form-input w-160">
+              <input type="number" x-model="rulesTimeout" placeholder="Persistent" class="form-input">
             </div>
             <div class="form-inline-group flex-grow">
               <label>Allowed shells (comma separated)</label>
               <input type="text" x-model="rulesShells" placeholder="e.g. bash, cmd, powershell" class="form-input">
             </div>
           </div>
-          <div class="rules-row" style="margin-top: 10px;">
-            <div class="form-inline-group flex-grow">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" x-model="rulesRequireAuth" class="form-checkbox">
-                Require Auth on Resume
-              </label>
+          <div class="rules-row" style="margin-top: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" x-model="ephemeralEnvDrop" class="form-checkbox">
+              <span>Ephemeral .env Drop Mode</span>
+            </label>
+            <div x-show="ephemeralEnvDrop" style="display: flex; gap: 8px; width: 100%; align-items: center; padding-left: 24px;">
+              <input type="text" x-model="ephemeralEnvDir" placeholder="Select Target Directory..." class="form-input flex-grow" readonly>
+              <button @click="pickEphemeralDir()" class="btn btn-secondary" style="padding: 6px 12px;">Browse</button>
             </div>
-            <button @click="saveRules()" class="btn btn-secondary align-self-end">Save Rules</button>
+          </div>
+          <div class="rules-row" style="margin-top: 10px; display: flex; align-items: center; gap: 20px; width: 100%;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" x-model="inheritParentEnv" class="form-checkbox">
+              <span>Parent Env Inheritance</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" x-model="rulesRequireAuth" class="form-checkbox">
+              Require Auth on Resume
+            </label>
+            <button @click="saveRules()" class="btn btn-secondary" style="margin-left: auto;">Save Rules</button>
           </div>
         </div>
+        <hr class="divider">
+
+        <div class="rules-section">
+          <h3>Integrations & Run</h3>
+          <div class="rules-row" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; width: 100%;">
+            <button @click="openVSCode(selectedProfile.id)" class="btn btn-primary" style="display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #007ACC, #0098FF); border: none;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 7 9 4 15 7 21 4 21 17 15 20 9 17 3 20"></polygon><line x1="9" y1="4" x2="9" y2="17"></line><line x1="15" y1="7" x2="15" y2="20"></line></svg>
+              <span>Open in VS Code</span>
+            </button>
+            <div style="display: flex; gap: 8px; flex-grow: 1; min-width: 250px; align-items: center;">
+              <input type="text" x-model="arbitraryCommand" placeholder="Run command (e.g. npm run dev, python app.py)" class="form-input flex-grow">
+              <button @click="runCommand(selectedProfile.id)" class="btn btn-secondary">Run Command</button>
+            </div>
+          </div>
+        </div>
+
         <hr class="divider">
 
         <div class="add-secret-section">
@@ -386,6 +414,56 @@
                 <span class="session-expiry-badge" :class="s.expires_at ? 'badge-warning' : 'badge-neutral'" x-text="s.expires_at ? 'Expiring' : 'Persistent'"></span>
                 <button @click="triggerStopSession(s.id)" class="btn btn-danger-small"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> Terminate</button>
               </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="panel-header" style="margin-top: 30px;">
+          <h2>Session Audit & History Logs</h2>
+          <button @click="loadSessionHistory()" class="btn btn-secondary" style="padding: 6px;" title="Refresh History">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+          </button>
+        </div>
+        <hr class="divider">
+
+        <div class="list-container">
+          <template x-if="sessionHistory.length === 0">
+            <div class="empty-state">
+              <h4 style="font-size: 14px; color: var(--text-muted);">No history recorded yet</h4>
+            </div>
+          </template>
+
+          <template x-if="sessionHistory.length > 0">
+            <div style="width: 100%; overflow-x: auto; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border);">
+              <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                <thead>
+                  <tr style="background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--border);">
+                    <th style="padding: 12px; font-weight: 600;">Profile</th>
+                    <th style="padding: 12px; font-weight: 600;">Shell / Command</th>
+                    <th style="padding: 12px; font-weight: 600;">Started At</th>
+                    <th style="padding: 12px; font-weight: 600;">Ended At</th>
+                    <th style="padding: 12px; font-weight: 600; text-align: right;">Exit Code</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="h in sessionHistory" :key="h.session_id">
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                      <td style="padding: 12px; font-weight: 500;" x-text="h.profile_name"></td>
+                      <td style="padding: 12px; font-family: monospace;" x-text="h.shell"></td>
+                      <td style="padding: 12px;" x-text="formatTimestamp(h.started_at)"></td>
+                      <td style="padding: 12px;" x-text="h.stopped_at ? formatTimestamp(h.stopped_at) : 'Active'"></td>
+                      <td style="padding: 12px; text-align: right; font-weight: bold;">
+                        <template x-if="h.stopped_at === null">
+                          <span class="badge badge-success">Running</span>
+                        </template>
+                        <template x-if="h.stopped_at !== null">
+                          <span :class="h.exit_code === 0 ? 'text-success' : 'text-danger'" x-text="h.exit_code"></span>
+                        </template>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
             </div>
           </template>
         </div>

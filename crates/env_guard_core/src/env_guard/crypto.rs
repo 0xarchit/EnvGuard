@@ -1,11 +1,11 @@
-use rand::RngCore;
-use aes_gcm::{Aes256Gcm, Nonce};
+use crate::env_guard::errors::CryptoError;
 use aes_gcm::aead::{Aead, KeyInit};
-use argon2::{Argon2, Params, Algorithm, Version};
+use aes_gcm::{Aes256Gcm, Nonce};
+use argon2::{Algorithm, Argon2, Params, Version};
 use hkdf::Hkdf;
+use rand::RngCore;
 use sha2::Sha256;
 use zeroize::Zeroizing;
-use crate::env_guard::errors::CryptoError;
 
 pub fn generate_vault_salt() -> [u8; 16] {
     let mut salt = [0u8; 16];
@@ -13,14 +13,14 @@ pub fn generate_vault_salt() -> [u8; 16] {
     salt
 }
 
-pub fn derive_master_key(
-    password: &str,
-    salt: &[u8],
-) -> Result<Zeroizing<[u8; 32]>, CryptoError> {
-    let params = Params::new(65536, 3, 4, Some(32)).map_err(|_| CryptoError::KeyDerivationFailed)?;
+pub fn derive_master_key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, CryptoError> {
+    let params =
+        Params::new(65536, 3, 4, Some(32)).map_err(|_| CryptoError::KeyDerivationFailed)?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::default(), params);
     let mut derived = [0u8; 32];
-    argon2.hash_password_into(password.as_bytes(), salt, &mut derived).map_err(|_| CryptoError::KeyDerivationFailed)?;
+    argon2
+        .hash_password_into(password.as_bytes(), salt, &mut derived)
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
     Ok(Zeroizing::new(derived))
 }
 
@@ -28,23 +28,25 @@ pub fn derive_master_key(
 pub fn derive_split_keys(
     master_secret: &[u8; 32],
 ) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<[u8; 32]>), CryptoError> {
-    let hk = Hkdf::<Sha256>::from_prk(master_secret).map_err(|_| CryptoError::KeyDerivationFailed)?;
+    let hk =
+        Hkdf::<Sha256>::from_prk(master_secret).map_err(|_| CryptoError::KeyDerivationFailed)?;
     let mut db_key = [0u8; 32];
     let mut master_key = [0u8; 32];
-    hk.expand(b"EnvGuard SQLCipher Database Key", &mut db_key).map_err(|_| CryptoError::KeyDerivationFailed)?;
-    hk.expand(b"EnvGuard Credential Master Key", &mut master_key).map_err(|_| CryptoError::KeyDerivationFailed)?;
+    hk.expand(b"EnvGuard SQLCipher Database Key", &mut db_key)
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
+    hk.expand(b"EnvGuard Credential Master Key", &mut master_key)
+        .map_err(|_| CryptoError::KeyDerivationFailed)?;
     Ok((Zeroizing::new(db_key), Zeroizing::new(master_key)))
 }
 
-pub fn encrypt_value(
-    plaintext: &str,
-    key: &[u8; 32],
-) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
+pub fn encrypt_value(plaintext: &str, key: &[u8; 32]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| CryptoError::EncryptionFailed)?;
     let mut nonce_bytes = [0u8; 12];
     rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes()).map_err(|_| CryptoError::EncryptionFailed)?;
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_bytes())
+        .map_err(|_| CryptoError::EncryptionFailed)?;
     Ok((ciphertext, nonce_bytes.to_vec()))
 }
 
@@ -58,8 +60,11 @@ pub fn decrypt_value(
     }
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| CryptoError::DecryptionFailed)?;
     let nonce = Nonce::from_slice(nonce_bytes);
-    let plaintext_bytes = cipher.decrypt(nonce, ciphertext).map_err(|_| CryptoError::DecryptionFailed)?;
-    let plaintext_string = String::from_utf8(plaintext_bytes).map_err(|_| CryptoError::DecryptionFailed)?;
+    let plaintext_bytes = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| CryptoError::DecryptionFailed)?;
+    let plaintext_string =
+        String::from_utf8(plaintext_bytes).map_err(|_| CryptoError::DecryptionFailed)?;
     Ok(Zeroizing::new(plaintext_string))
 }
 

@@ -23,9 +23,15 @@ pub struct AppConfig {
     pub auto_lock_on_blur: bool,
 }
 
-fn default_clipboard_timeout() -> u64 { 30 }
-fn default_auto_lock_idle() -> u64 { 15 }
-fn default_auto_lock_on_blur() -> bool { false }
+fn default_clipboard_timeout() -> u64 {
+    30
+}
+fn default_auto_lock_idle() -> u64 {
+    15
+}
+fn default_auto_lock_on_blur() -> bool {
+    false
+}
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -85,7 +91,9 @@ pub async fn save_config(config: &AppConfig) -> Result<(), String> {
     if let Some(path) = config_file_path() {
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+                fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
         }
         let json = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;

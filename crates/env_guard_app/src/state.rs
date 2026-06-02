@@ -1,6 +1,6 @@
+use env_guard_core::env_guard::envGuard;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use env_guard_core::env_guard::envGuard;
 
 pub struct VaultState {
     pub inner: Arc<Mutex<Option<envGuard>>>,

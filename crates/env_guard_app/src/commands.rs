@@ -1,7 +1,7 @@
+use crate::state::VaultState;
+use env_guard_core::env_guard::models::{Profile, RuntimeSession, SessionRules, ShellType};
 use tauri::State;
 use uuid::Uuid;
-use env_guard_core::env_guard::models::{Profile, SessionRules, ShellType, RuntimeSession};
-use crate::state::VaultState;
 
 #[derive(serde::Serialize)]
 pub struct CredentialMeta {
@@ -23,21 +23,31 @@ pub struct SessionRulesInput {
     pub expiration_seconds: Option<u64>,
     pub allowed_shells: Vec<String>,
     pub require_auth_on_resume: bool,
+    pub ephemeral_env_drop: Option<bool>,
+    pub ephemeral_env_dir: Option<String>,
+    pub inherit_parent_env: Option<bool>,
 }
 
 fn map_rules_input(input: SessionRulesInput) -> SessionRules {
-    let allowed_shells = input.allowed_shells.into_iter().map(|s| match s.to_lowercase().as_str() {
-        "bash" => ShellType::Bash,
-        "zsh" => ShellType::Zsh,
-        "fish" => ShellType::Fish,
-        "powershell" => ShellType::PowerShell,
-        "cmd" => ShellType::Cmd,
-        other => ShellType::Custom(other.to_string()),
-    }).collect();
+    let allowed_shells = input
+        .allowed_shells
+        .into_iter()
+        .map(|s| match s.to_lowercase().as_str() {
+            "bash" => ShellType::Bash,
+            "zsh" => ShellType::Zsh,
+            "fish" => ShellType::Fish,
+            "powershell" => ShellType::PowerShell,
+            "cmd" => ShellType::Cmd,
+            other => ShellType::Custom(other.to_string()),
+        })
+        .collect();
     SessionRules {
         expiration_seconds: input.expiration_seconds,
         allowed_shells,
         require_auth_on_resume: input.require_auth_on_resume,
+        ephemeral_env_drop: input.ephemeral_env_drop,
+        ephemeral_env_dir: input.ephemeral_env_dir,
+        inherit_parent_env: input.inherit_parent_env,
     }
 }
 
@@ -86,7 +96,10 @@ pub async fn unlock_vault(
         let delay_ms = 2u64.pow(sec_state.failed_attempts - 3) * 1000;
         if now < sec_state.last_failed_attempt_ms + delay_ms {
             let wait_sec = ((sec_state.last_failed_attempt_ms + delay_ms - now) / 1000) + 1;
-            return Err(format!("Too many failed attempts. Try again in {} seconds.", wait_sec));
+            return Err(format!(
+                "Too many failed attempts. Try again in {} seconds.",
+                wait_sec
+            ));
         }
     }
 
@@ -95,18 +108,26 @@ pub async fn unlock_vault(
         Err(e) => {
             sec_state.failed_attempts += 1;
             sec_state.last_failed_attempt_ms = now;
-            let log_entry = format!("Failed unlock attempt at {}", chrono::Utc::now().to_rfc3339());
+            let log_entry = format!(
+                "Failed unlock attempt at {}",
+                chrono::Utc::now().to_rfc3339()
+            );
             sec_state.failed_logs.push(log_entry);
             save_security_state(&db_path, &sec_state).await;
 
             let s = e.to_string();
-            if s.contains("Decryption failed") || s.contains("Crypto error") || s.contains("integrity") {
+            if s.contains("Decryption failed")
+                || s.contains("Crypto error")
+                || s.contains("integrity")
+            {
                 return Err("Incorrect master password".to_string());
             } else {
                 return Err(s);
             }
         }
     };
+
+    let _ = engine.perform_crash_recovery(&db_path).await;
 
     let logs = sec_state.failed_logs.clone();
     if sec_state.failed_attempts > 0 {
@@ -121,9 +142,7 @@ pub async fn unlock_vault(
 }
 
 #[tauri::command]
-pub async fn lock_vault(
-    state: State<'_, VaultState>,
-) -> Result<(), String> {
+pub async fn lock_vault(state: State<'_, VaultState>) -> Result<(), String> {
     let mut lock = state.inner.lock().await;
     if let Some(engine) = lock.take() {
         engine.lock().await.map_err(|e| e.to_string())?;
@@ -132,9 +151,7 @@ pub async fn lock_vault(
 }
 
 #[tauri::command]
-pub async fn wipe_vault(
-    state: State<'_, VaultState>,
-) -> Result<(), String> {
+pub async fn wipe_vault(state: State<'_, VaultState>) -> Result<(), String> {
     let mut lock = state.inner.lock().await;
     if let Some(engine) = lock.take() {
         let _ = engine.lock().await;
@@ -166,20 +183,17 @@ pub async fn create_profile(
     let mapped_rules = map_rules_input(rules);
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.create_profile(&name, description.as_deref(), mapped_rules)
+    engine
+        .create_profile(&name, description.as_deref(), mapped_rules)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn list_profiles(
-    state: State<'_, VaultState>,
-) -> Result<Vec<Profile>, String> {
+pub async fn list_profiles(state: State<'_, VaultState>) -> Result<Vec<Profile>, String> {
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.list_profiles()
-        .await
-        .map_err(|e| e.to_string())
+    engine.list_profiles().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -192,7 +206,8 @@ pub async fn update_profile(
     let profile_id = Uuid::parse_str(&id).map_err(|_| "Invalid profile ID")?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.update_profile(profile_id, &name, description.as_deref())
+    engine
+        .update_profile(profile_id, &name, description.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
@@ -207,7 +222,8 @@ pub async fn update_profile_metadata(
     let profile_id = Uuid::parse_str(&id).map_err(|_| "Invalid profile ID")?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.update_profile_metadata(profile_id, color.as_deref(), &tags)
+    engine
+        .update_profile_metadata(profile_id, color.as_deref(), &tags)
         .await
         .map_err(|e| e.to_string())
 }
@@ -220,20 +236,19 @@ pub async fn duplicate_profile(
     let profile_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.duplicate_profile(profile_uuid)
+    engine
+        .duplicate_profile(profile_uuid)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_profile(
-    state: State<'_, VaultState>,
-    id: String,
-) -> Result<Profile, String> {
+pub async fn get_profile(state: State<'_, VaultState>, id: String) -> Result<Profile, String> {
     let profile_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    let profile_opt = engine.get_profile(profile_uuid)
+    let profile_opt = engine
+        .get_profile(profile_uuid)
         .await
         .map_err(|e| e.to_string())?;
     profile_opt.ok_or_else(|| "Profile not found".to_string())
@@ -249,20 +264,19 @@ pub async fn update_profile_rules(
     let profile_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.update_profile_rules(profile_uuid, mapped_rules)
+    engine
+        .update_profile_rules(profile_uuid, mapped_rules)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_profile(
-    state: State<'_, VaultState>,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_profile(state: State<'_, VaultState>, id: String) -> Result<(), String> {
     let profile_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.delete_profile(profile_uuid)
+    engine
+        .delete_profile(profile_uuid)
         .await
         .map_err(|e| e.to_string())
 }
@@ -277,7 +291,8 @@ pub async fn add_credential(
     let profile_uuid = Uuid::parse_str(&profile_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    let cred = engine.add_credential(profile_uuid, &key, &value)
+    let cred = engine
+        .add_credential(profile_uuid, &key, &value)
         .await
         .map_err(|e| e.to_string())?;
     Ok(CredentialMeta {
@@ -297,16 +312,20 @@ pub async fn list_credentials(
     let profile_uuid = Uuid::parse_str(&profile_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    let list = engine.get_credentials_metadata(profile_uuid)
+    let list = engine
+        .get_credentials_metadata(profile_uuid)
         .await
         .map_err(|e| e.to_string())?;
-    let result = list.into_iter().map(|c| CredentialMeta {
-        id: c.id.to_string(),
-        key: c.key,
-        tags: c.tags,
-        created_at: c.created_at.to_rfc3339(),
-        updated_at: c.updated_at.to_rfc3339(),
-    }).collect();
+    let result = list
+        .into_iter()
+        .map(|c| CredentialMeta {
+            id: c.id.to_string(),
+            key: c.key,
+            tags: c.tags,
+            created_at: c.created_at.to_rfc3339(),
+            updated_at: c.updated_at.to_rfc3339(),
+        })
+        .collect();
     Ok(result)
 }
 
@@ -318,7 +337,8 @@ pub async fn decrypt_credential(
     let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.decrypt_credential(cred_uuid)
+    engine
+        .decrypt_credential(cred_uuid)
         .await
         .map_err(|e| e.to_string())
 }
@@ -331,7 +351,8 @@ pub async fn delete_credential(
     let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.delete_credential(cred_uuid)
+    engine
+        .delete_credential(cred_uuid)
         .await
         .map_err(|e| e.to_string())
 }
@@ -345,7 +366,8 @@ pub async fn update_credential(
     let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.update_credential(cred_uuid, &new_value)
+    engine
+        .update_credential(cred_uuid, &new_value)
         .await
         .map_err(|e| e.to_string())
 }
@@ -368,7 +390,8 @@ pub async fn start_session(
 
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.start_session(profile_uuid, shell_type)
+    engine
+        .start_session(profile_uuid, shell_type)
         .await
         .map_err(|e| {
             tracing::error!("Failed to start session: {}", e);
@@ -384,7 +407,8 @@ pub async fn stop_session(
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.stop_session(session_uuid)
+    engine
+        .stop_session(session_uuid)
         .await
         .map_err(|e| e.to_string())
 }
@@ -406,18 +430,26 @@ pub async fn scan_for_env_files(
 ) -> Result<Vec<ScannedFile>, String> {
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    let paths = engine.scan_for_env_files(std::path::Path::new(&path))
+    let paths = engine
+        .scan_for_env_files(std::path::Path::new(&path))
         .await
         .map_err(|e| e.to_string())?;
 
-    let result = paths.into_iter().map(|p| {
-        let path_str = p.to_string_lossy().to_string();
-        let is_env = p.file_name()
-            .and_then(|s| s.to_str())
-            .map(|name| name.starts_with(".env") || name.ends_with(".env"))
-            .unwrap_or(false);
-        ScannedFile { path: path_str, is_env }
-    }).collect();
+    let result = paths
+        .into_iter()
+        .map(|p| {
+            let path_str = p.to_string_lossy().to_string();
+            let is_env = p
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|name| name.starts_with(".env") || name.ends_with(".env"))
+                .unwrap_or(false);
+            ScannedFile {
+                path: path_str,
+                is_env,
+            }
+        })
+        .collect();
 
     Ok(result)
 }
@@ -475,9 +507,14 @@ pub fn generate_secure_token(length: usize, include_symbols: bool) -> Result<Str
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let charset_alphanumeric = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let charset_symbols = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+    let charset_symbols =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
 
-    let charset: &[u8] = if include_symbols { charset_symbols } else { charset_alphanumeric };
+    let charset: &[u8] = if include_symbols {
+        charset_symbols
+    } else {
+        charset_alphanumeric
+    };
 
     let token: String = (0..length)
         .map(|_| {
@@ -504,7 +541,10 @@ pub async fn export_credentials(
 
     for (key, id_str) in credentials_to_export {
         let cred_uuid = Uuid::parse_str(&id_str).map_err(|e| e.to_string())?;
-        let decrypted = engine.decrypt_credential(cred_uuid).await.map_err(|e| e.to_string())?;
+        let decrypted = engine
+            .decrypt_credential(cred_uuid)
+            .await
+            .map_err(|e| e.to_string())?;
         let escaped_val = decrypted.replace('"', "\\\"");
         exported_env.push_str(&format!("{}=\"{}\"\n", key, escaped_val));
     }
@@ -522,7 +562,10 @@ pub async fn update_credential_tags(
     let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.update_credential_tags(cred_uuid, tags).await.map_err(|e| e.to_string())?;
+    engine
+        .update_credential_tags(cred_uuid, tags)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -541,11 +584,17 @@ pub async fn get_credential_history(
     let engine = lock.as_ref().ok_or("Vault is locked")?;
     let cred_uuid = Uuid::parse_str(&credential_id).map_err(|e| e.to_string())?;
 
-    let hist = engine.get_credential_history(cred_uuid).await.map_err(|e| e.to_string())?;
-    Ok(hist.into_iter().map(|(val, ts)| CredentialHistoryItem {
-        value: val,
-        updated_at: ts.to_rfc3339(),
-    }).collect())
+    let hist = engine
+        .get_credential_history(cred_uuid)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(hist
+        .into_iter()
+        .map(|(val, ts)| CredentialHistoryItem {
+            value: val,
+            updated_at: ts.to_rfc3339(),
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -559,7 +608,8 @@ pub async fn change_master_password(
     let mut lock = state.inner.lock().await;
     let engine = lock.as_mut().ok_or("Vault is locked")?;
 
-    engine.change_master_password(&db_path, &new_password)
+    engine
+        .change_master_password(&db_path, &new_password)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -586,4 +636,38 @@ pub async fn get_password_from_keychain() -> Result<String, String> {
 pub async fn delete_password_from_keychain() -> Result<(), String> {
     let entry = get_keyring_entry()?;
     entry.delete_password().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_session_history(
+    state: State<'_, VaultState>,
+) -> Result<Vec<env_guard_core::env_guard::models::SessionHistoryEntry>, String> {
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    engine.get_session_history().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn open_in_vscode(
+    state: State<'_, VaultState>,
+    profile_id: String,
+) -> Result<(), String> {
+    let profile_uuid = Uuid::parse_str(&profile_id).map_err(|e| e.to_string())?;
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    engine.spawn_process_with_env(profile_uuid, "code .").await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn spawn_process(
+    state: State<'_, VaultState>,
+    profile_id: String,
+    command: String,
+) -> Result<u32, String> {
+    let profile_uuid = Uuid::parse_str(&profile_id).map_err(|e| e.to_string())?;
+    let lock = state.inner.lock().await;
+    let engine = lock.as_ref().ok_or("Vault is locked")?;
+    let pid = engine.spawn_process_with_env(profile_uuid, &command).await.map_err(|e| e.to_string())?;
+    Ok(pid)
 }

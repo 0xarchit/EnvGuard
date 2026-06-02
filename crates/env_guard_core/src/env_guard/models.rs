@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use std::fmt;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use zeroize::Zeroizing;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -18,6 +18,9 @@ pub struct SessionRules {
     pub expiration_seconds: Option<u64>,
     pub allowed_shells: Vec<ShellType>,
     pub require_auth_on_resume: bool,
+    pub ephemeral_env_drop: Option<bool>,
+    pub ephemeral_env_dir: Option<String>,
+    pub inherit_parent_env: Option<bool>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -81,4 +84,16 @@ pub struct RuntimeSession {
     pub expires_at: Option<DateTime<Utc>>,
     pub pid: Option<u32>,
     pub status: SessionStatus,
+    pub ephemeral_env_path: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SessionHistoryEntry {
+    pub session_id: String,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub shell: String,
+    pub started_at: String,
+    pub stopped_at: Option<String>,
+    pub exit_code: Option<i32>,
 }

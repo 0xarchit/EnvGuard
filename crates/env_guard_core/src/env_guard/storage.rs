@@ -1,10 +1,12 @@
+use crate::env_guard::errors::StorageError;
+use crate::env_guard::models::{
+    Credential, Profile, RuntimeSession, SessionRules, SessionStatus, ShellType,
+};
+use chrono::{DateTime, Utc};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
+use sqlx::{Row, SqlitePool};
 use std::path::Path;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use sqlx::{SqlitePool, Row};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
-use crate::env_guard::models::{Profile, Credential, RuntimeSession, SessionRules, ShellType, SessionStatus};
-use crate::env_guard::errors::StorageError;
 
 pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, StorageError> {
     let options = SqliteConnectOptions::new()
@@ -14,14 +16,16 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
         .pragma("key", format!("'{}'", db_key))
         .pragma("foreign_keys", "ON");
     let pool = SqlitePool::connect_with(options).await?;
-    
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS vault_meta (
             id INTEGER PRIMARY KEY,
             salt BLOB NOT NULL,
             created_at TEXT NOT NULL
-        );"
-    ).execute(&pool).await?;
+        );",
+    )
+    .execute(&pool)
+    .await?;
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS profiles (
@@ -35,28 +39,44 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
             last_used_at TEXT,
             color TEXT,
             tags TEXT NOT NULL DEFAULT '[]'
-        );"
-    ).execute(&pool).await?;
+        );",
+    )
+    .execute(&pool)
+    .await?;
 
     // Schema migration for old vaults
-    let table_info = sqlx::query("PRAGMA table_info(profiles)").fetch_all(&pool).await?;
+    let table_info = sqlx::query("PRAGMA table_info(profiles)")
+        .fetch_all(&pool)
+        .await?;
     let mut has_last_used = false;
     let mut has_color = false;
     let mut has_tags = false;
     for row in table_info {
         let name: String = row.get("name");
-        if name == "last_used_at" { has_last_used = true; }
-        if name == "color" { has_color = true; }
-        if name == "tags" { has_tags = true; }
+        if name == "last_used_at" {
+            has_last_used = true;
+        }
+        if name == "color" {
+            has_color = true;
+        }
+        if name == "tags" {
+            has_tags = true;
+        }
     }
     if !has_last_used {
-        sqlx::query("ALTER TABLE profiles ADD COLUMN last_used_at TEXT").execute(&pool).await?;
+        sqlx::query("ALTER TABLE profiles ADD COLUMN last_used_at TEXT")
+            .execute(&pool)
+            .await?;
     }
     if !has_color {
-        sqlx::query("ALTER TABLE profiles ADD COLUMN color TEXT").execute(&pool).await?;
+        sqlx::query("ALTER TABLE profiles ADD COLUMN color TEXT")
+            .execute(&pool)
+            .await?;
     }
     if !has_tags {
-        sqlx::query("ALTER TABLE profiles ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'").execute(&pool).await?;
+        sqlx::query("ALTER TABLE profiles ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+            .execute(&pool)
+            .await?;
     }
 
     sqlx::query(
@@ -70,8 +90,10 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             UNIQUE(profile_id, key)
-        );"
-    ).execute(&pool).await?;
+        );",
+    )
+    .execute(&pool)
+    .await?;
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS sessions (
@@ -81,9 +103,41 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
             started_at TEXT NOT NULL,
             expires_at TEXT,
             pid INTEGER,
-            status TEXT NOT NULL
-        );"
-    ).execute(&pool).await?;
+            status TEXT NOT NULL,
+            ephemeral_env_path TEXT
+        );",
+    )
+    .execute(&pool)
+    .await?;
+
+    let sessions_table_info = sqlx::query("PRAGMA table_info(sessions)")
+        .fetch_all(&pool)
+        .await?;
+    let mut has_ephemeral_path = false;
+    for row in sessions_table_info {
+        let name: String = row.get("name");
+        if name == "ephemeral_env_path" {
+            has_ephemeral_path = true;
+        }
+    }
+    if !has_ephemeral_path {
+        sqlx::query("ALTER TABLE sessions ADD COLUMN ephemeral_env_path TEXT")
+            .execute(&pool)
+            .await?;
+    }
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS session_history (
+            session_id TEXT PRIMARY KEY,
+            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+            shell TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            stopped_at TEXT,
+            exit_code INTEGER
+        );",
+    )
+    .execute(&pool)
+    .await?;
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS credential_history (
@@ -92,12 +146,13 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
             encrypted_value BLOB NOT NULL,
             nonce BLOB NOT NULL,
             updated_at TEXT NOT NULL
-        );"
-    ).execute(&pool).await?;
+        );",
+    )
+    .execute(&pool)
+    .await?;
 
     Ok(pool)
 }
-
 
 pub async fn store_profile(pool: &SqlitePool, profile: &Profile) -> Result<(), StorageError> {
     let rules_str = serde_json::to_string(&profile.session_rules)?;
@@ -237,15 +292,13 @@ pub async fn update_profile(
     name: &str,
     description: Option<&str>,
 ) -> Result<(), StorageError> {
-    sqlx::query(
-        "UPDATE profiles SET name = ?, description = ?, updated_at = ? WHERE id = ?"
-    )
-    .bind(name)
-    .bind(description)
-    .bind(chrono::Utc::now().to_rfc3339())
-    .bind(id.to_string())
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE profiles SET name = ?, description = ?, updated_at = ? WHERE id = ?")
+        .bind(name)
+        .bind(description)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -256,29 +309,22 @@ pub async fn update_profile_metadata(
     tags: &[String],
 ) -> Result<(), StorageError> {
     let tags_str = serde_json::to_string(tags)?;
-    sqlx::query(
-        "UPDATE profiles SET color = ?, tags = ?, updated_at = ? WHERE id = ?"
-    )
-    .bind(color)
-    .bind(tags_str)
-    .bind(chrono::Utc::now().to_rfc3339())
-    .bind(id.to_string())
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE profiles SET color = ?, tags = ?, updated_at = ? WHERE id = ?")
+        .bind(color)
+        .bind(tags_str)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
-pub async fn update_profile_last_used(
-    pool: &SqlitePool,
-    id: Uuid,
-) -> Result<(), StorageError> {
-    sqlx::query(
-        "UPDATE profiles SET last_used_at = ? WHERE id = ?"
-    )
-    .bind(chrono::Utc::now().to_rfc3339())
-    .bind(id.to_string())
-    .execute(pool)
-    .await?;
+pub async fn update_profile_last_used(pool: &SqlitePool, id: Uuid) -> Result<(), StorageError> {
+    sqlx::query("UPDATE profiles SET last_used_at = ? WHERE id = ?")
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
     Ok(())
 }
 
@@ -389,12 +435,15 @@ pub async fn upsert_credential(pool: &SqlitePool, cred: &Credential) -> Result<(
     Ok(())
 }
 
-pub async fn record_session(pool: &SqlitePool, session: &RuntimeSession) -> Result<(), StorageError> {
+pub async fn record_session(
+    pool: &SqlitePool,
+    session: &RuntimeSession,
+) -> Result<(), StorageError> {
     let shell_str = serde_json::to_string(&session.shell)?;
     let status_str = serde_json::to_string(&session.status)?;
     sqlx::query(
-        "INSERT INTO sessions (id, profile_id, shell, started_at, expires_at, pid, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO sessions (id, profile_id, shell, started_at, expires_at, pid, status, ephemeral_env_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(session.id.to_string())
     .bind(session.profile_id.to_string())
@@ -403,6 +452,7 @@ pub async fn record_session(pool: &SqlitePool, session: &RuntimeSession) -> Resu
     .bind(session.expires_at.map(|d| d.to_rfc3339()))
     .bind(session.pid.map(|p| p as i32))
     .bind(status_str)
+    .bind(&session.ephemeral_env_path)
     .execute(pool)
     .await?;
     Ok(())
@@ -427,7 +477,7 @@ pub async fn get_active_session(
     profile_id: Uuid,
 ) -> Result<Option<RuntimeSession>, StorageError> {
     let active_status_str = serde_json::to_string(&SessionStatus::Active)?;
-    let row = sqlx::query("SELECT id, profile_id, shell, started_at, expires_at, pid, status FROM sessions WHERE profile_id = ? AND status = ? LIMIT 1")
+    let row = sqlx::query("SELECT id, profile_id, shell, started_at, expires_at, pid, status, ephemeral_env_path FROM sessions WHERE profile_id = ? AND status = ? LIMIT 1")
         .bind(profile_id.to_string())
         .bind(active_status_str)
         .fetch_optional(pool)
@@ -440,6 +490,7 @@ pub async fn get_active_session(
         let expires_str: Option<String> = r.get(4);
         let pid_int: Option<i32> = r.get(5);
         let status_str: String = r.get(6);
+        let ephemeral_path_str: Option<String> = r.get(7);
 
         let shell: ShellType = serde_json::from_str(&shell_str)?;
         let status: SessionStatus = serde_json::from_str(&status_str)?;
@@ -447,9 +498,11 @@ pub async fn get_active_session(
             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
             .with_timezone(&Utc);
         let expires_at = if let Some(ref d) = expires_str {
-            Some(DateTime::parse_from_rfc3339(d)
-                .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
-                .with_timezone(&Utc))
+            Some(
+                DateTime::parse_from_rfc3339(d)
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
+                    .with_timezone(&Utc),
+            )
         } else {
             None
         };
@@ -462,10 +515,94 @@ pub async fn get_active_session(
             expires_at,
             pid: pid_int.map(|p| p as u32),
             status,
+            ephemeral_env_path: ephemeral_path_str,
         }))
     } else {
         Ok(None)
     }
+}
+
+pub async fn store_session_history_start(
+    pool: &SqlitePool,
+    session_id: Uuid,
+    profile_id: Uuid,
+    shell: &ShellType,
+    started_at: DateTime<Utc>,
+) -> Result<(), StorageError> {
+    let shell_str = serde_json::to_string(shell)?;
+    sqlx::query(
+        "INSERT INTO session_history (session_id, profile_id, shell, started_at)
+         VALUES (?, ?, ?, ?)",
+    )
+    .bind(session_id.to_string())
+    .bind(profile_id.to_string())
+    .bind(shell_str)
+    .bind(started_at.to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn store_session_history_stop(
+    pool: &SqlitePool,
+    session_id: Uuid,
+    stopped_at: DateTime<Utc>,
+    exit_code: Option<i32>,
+) -> Result<(), StorageError> {
+    sqlx::query(
+        "UPDATE session_history SET stopped_at = ?, exit_code = ? WHERE session_id = ?",
+    )
+    .bind(stopped_at.to_rfc3339())
+    .bind(exit_code)
+    .bind(session_id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn get_session_history(
+    pool: &SqlitePool,
+) -> Result<Vec<crate::env_guard::models::SessionHistoryEntry>, StorageError> {
+    let rows = sqlx::query(
+        "SELECT h.session_id, h.profile_id, COALESCE(p.name, 'Deleted Profile') as name, h.shell, h.started_at, h.stopped_at, h.exit_code 
+         FROM session_history h
+         LEFT JOIN profiles p ON h.profile_id = p.id
+         ORDER BY h.started_at DESC"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut result = Vec::new();
+    for r in rows {
+        let session_id: String = r.get(0);
+        let profile_id: String = r.get(1);
+        let profile_name: String = r.get(2);
+        let shell_str: String = r.get(3);
+        let started_at: String = r.get(4);
+        let stopped_at: Option<String> = r.get(5);
+        let exit_code: Option<i32> = r.get(6);
+
+        let shell: ShellType = serde_json::from_str(&shell_str).unwrap_or(ShellType::Cmd);
+        let shell_display = match shell {
+            ShellType::Bash => "Bash".to_string(),
+            ShellType::Zsh => "Zsh".to_string(),
+            ShellType::Fish => "Fish".to_string(),
+            ShellType::PowerShell => "PowerShell".to_string(),
+            ShellType::Cmd => "Cmd".to_string(),
+            ShellType::Custom(s) => format!("Custom ({})", s),
+        };
+
+        result.push(crate::env_guard::models::SessionHistoryEntry {
+            session_id,
+            profile_id,
+            profile_name,
+            shell: shell_display,
+            started_at,
+            stopped_at,
+            exit_code,
+        });
+    }
+    Ok(result)
 }
 
 pub async fn get_credential_metadata(
@@ -482,13 +619,13 @@ pub async fn get_credential_metadata(
         let created_str: String = r.get(2);
         let tags_str: String = r.get(3);
 
-        let profile_id = Uuid::parse_str(&profile_id_str)
-            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        let profile_id =
+            Uuid::parse_str(&profile_id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
         let created_at = chrono::DateTime::parse_from_rfc3339(&created_str)
             .map_err(|e| sqlx::Error::Decode(Box::new(e)))?
             .with_timezone(&Utc);
-        let tags: Vec<String> = serde_json::from_str(&tags_str)
-            .map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
+        let tags: Vec<String> =
+            serde_json::from_str(&tags_str).map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
 
         Ok(Some((profile_id, key, created_at, tags)))
     } else {
@@ -512,17 +649,18 @@ pub async fn update_profile_active_status(
 pub async fn get_session_profile_and_pid(
     pool: &SqlitePool,
     session_id: Uuid,
-) -> Result<Option<(Uuid, Option<i64>)>, StorageError> {
-    let row = sqlx::query("SELECT profile_id, pid FROM sessions WHERE id = ?")
+) -> Result<Option<(Uuid, Option<i64>, Option<String>)>, StorageError> {
+    let row = sqlx::query("SELECT profile_id, pid, ephemeral_env_path FROM sessions WHERE id = ?")
         .bind(session_id.to_string())
         .fetch_optional(pool)
         .await?;
     if let Some(r) = row {
         let profile_id_str: String = r.get(0);
         let pid: Option<i64> = r.get(1);
-        let profile_id = Uuid::parse_str(&profile_id_str)
-            .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
-        Ok(Some((profile_id, pid)))
+        let ephemeral_env_path: Option<String> = r.get(2);
+        let profile_id =
+            Uuid::parse_str(&profile_id_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+        Ok(Some((profile_id, pid, ephemeral_env_path)))
     } else {
         Ok(None)
     }
@@ -576,6 +714,9 @@ mod tests {
             expiration_seconds: Some(3600),
             allowed_shells: vec![ShellType::Bash],
             require_auth_on_resume: false,
+            ephemeral_env_drop: None,
+            ephemeral_env_dir: None,
+            inherit_parent_env: None,
         };
         let profile = Profile {
             id: profile_id,
@@ -585,6 +726,9 @@ mod tests {
             updated_at: Utc::now(),
             is_active: false,
             session_rules: rules,
+            color: None,
+            last_used_at: None,
+            tags: vec![],
         };
 
         store_profile(&pool, &profile).await.unwrap();
@@ -605,6 +749,9 @@ mod tests {
             expiration_seconds: None,
             allowed_shells: vec![],
             require_auth_on_resume: false,
+            ephemeral_env_drop: None,
+            ephemeral_env_dir: None,
+            inherit_parent_env: None,
         };
         let profile = Profile {
             id: profile_id,
@@ -614,6 +761,9 @@ mod tests {
             updated_at: Utc::now(),
             is_active: false,
             session_rules: rules,
+            color: None,
+            last_used_at: None,
+            tags: vec![],
         };
         store_profile(&pool, &profile).await.unwrap();
 
@@ -634,7 +784,9 @@ mod tests {
         updated.encrypted_value = vec![9, 9, 9];
         upsert_credential(&pool, &updated).await.unwrap();
 
-        let list = get_credentials_for_profile(&pool, profile_id).await.unwrap();
+        let list = get_credentials_for_profile(&pool, profile_id)
+            .await
+            .unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].encrypted_value, vec![9, 9, 9]);
     }
@@ -650,6 +802,9 @@ mod tests {
             expiration_seconds: None,
             allowed_shells: vec![],
             require_auth_on_resume: false,
+            ephemeral_env_drop: None,
+            ephemeral_env_dir: None,
+            inherit_parent_env: None,
         };
         let profile = Profile {
             id: profile_id,
@@ -659,6 +814,9 @@ mod tests {
             updated_at: Utc::now(),
             is_active: false,
             session_rules: rules,
+            color: None,
+            last_used_at: None,
+            tags: vec![],
         };
         store_profile(&pool, &profile).await.unwrap();
 
@@ -676,7 +834,9 @@ mod tests {
 
         delete_profile(&pool, profile_id).await.unwrap();
 
-        let list = get_credentials_for_profile(&pool, profile_id).await.unwrap();
+        let list = get_credentials_for_profile(&pool, profile_id)
+            .await
+            .unwrap();
         assert_eq!(list.len(), 0);
     }
 }
@@ -686,7 +846,7 @@ pub async fn insert_credential_history(
     credential_id: Uuid,
     encrypted_value: &[u8],
     nonce: &[u8],
-    updated_at: DateTime<Utc>
+    updated_at: DateTime<Utc>,
 ) -> Result<(), StorageError> {
     sqlx::query(
         "INSERT INTO credential_history (credential_id, encrypted_value, nonce, updated_at) VALUES (?, ?, ?, ?)"
@@ -702,11 +862,12 @@ pub async fn insert_credential_history(
             SELECT id FROM credential_history 
             WHERE credential_id = ? 
             ORDER BY updated_at DESC LIMIT 3
-        ) AND credential_id = ?"
+        ) AND credential_id = ?",
     )
     .bind(credential_id.to_string())
     .bind(credential_id.to_string())
-    .execute(pool).await?;
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
