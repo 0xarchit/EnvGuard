@@ -1,8 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod state;
 mod commands;
 mod config;
+mod state;
 
 use state::VaultState;
 
@@ -45,7 +45,10 @@ fn main() {
             commands::change_master_password,
             commands::save_password_to_keychain,
             commands::get_password_from_keychain,
-            commands::delete_password_from_keychain
+            commands::delete_password_from_keychain,
+            commands::list_session_history,
+            commands::open_in_vscode,
+            commands::spawn_process
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

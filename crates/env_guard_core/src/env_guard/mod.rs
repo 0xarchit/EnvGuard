@@ -1,20 +1,22 @@
-pub mod models;
-pub mod errors;
 pub mod crypto;
-pub mod storage;
+pub mod errors;
+pub mod models;
 pub mod session;
+pub mod storage;
 
-use std::path::{Path, PathBuf};
+use chrono::{DateTime, Utc};
+use sqlx::{SqlitePool, Row};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use sqlx::SqlitePool;
 use zeroize::Zeroizing;
 
-use crate::env_guard::models::{Profile, Credential, PlaintextCredential, SessionRules, ShellType, RuntimeSession};
 use crate::env_guard::errors::ControllerError;
+use crate::env_guard::models::{
+    Credential, PlaintextCredential, Profile, RuntimeSession, SessionRules, ShellType, SessionStatus,
+};
 
 #[allow(non_camel_case_types)]
 pub struct envGuard {
@@ -28,12 +30,14 @@ impl envGuard {
     pub async fn unlock(db_path: &Path, password: &str) -> Result<Self, ControllerError> {
         let salt_path = db_path.with_extension("salt");
         let salt = if salt_path.exists() {
-            std::fs::read(&salt_path)
-                .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?
+            std::fs::read(&salt_path).map_err(|e| {
+                ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e))
+            })?
         } else {
             let s = crypto::generate_vault_salt();
-            std::fs::write(&salt_path, s)
-                .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?;
+            std::fs::write(&salt_path, s).map_err(|e| {
+                ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e))
+            })?;
             s.to_vec()
         };
 
@@ -47,14 +51,19 @@ impl envGuard {
         let row = sqlx::query("PRAGMA integrity_check")
             .fetch_one(&pool)
             .await
-            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e)))?;
-        
+            .map_err(|e| {
+                ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e))
+            })?;
+
         use sqlx::Row;
         let integrity_result: String = row.get(0);
         if integrity_result != "ok" {
-            return Err(ControllerError::Storage(crate::env_guard::errors::StorageError::Migration(
-                format!("Vault integrity check failed: {}", integrity_result)
-            )));
+            return Err(ControllerError::Storage(
+                crate::env_guard::errors::StorageError::Migration(format!(
+                    "Vault integrity check failed: {}",
+                    integrity_result
+                )),
+            ));
         }
 
         Ok(Self {
@@ -68,7 +77,10 @@ impl envGuard {
         {
             let mut sessions = self.active_sessions.lock().await;
             for (_, session) in sessions.drain() {
-                let decrypted = self.get_decrypted_credentials(session.profile_id).await.unwrap_or_default();
+                let decrypted = self
+                    .get_decrypted_credentials(session.profile_id)
+                    .await
+                    .unwrap_or_default();
                 let keys: Vec<String> = decrypted.into_iter().map(|c| c.key).collect();
                 let _ = session::remove_environment(&keys).await;
             }
@@ -77,7 +89,57 @@ impl envGuard {
         Ok(())
     }
 
-    pub async fn change_master_password(&mut self, db_path: &Path, new_password: &str) -> Result<(), ControllerError> {
+    pub async fn perform_crash_recovery(&self, db_path: &std::path::Path) -> Result<(), ControllerError> {
+        let active_status_str = serde_json::to_string(&SessionStatus::Active).unwrap_or_default();
+        if let Ok(rows) = sqlx::query("SELECT id, ephemeral_env_path FROM sessions WHERE status = ?")
+            .bind(&active_status_str)
+            .fetch_all(&self.pool)
+            .await
+        {
+            for r in rows {
+                let session_id_str: String = r.get(0);
+                let ephemeral_path_str: Option<String> = r.get(1);
+
+                if let Some(ref path) = ephemeral_path_str {
+                    let _ = std::fs::remove_file(std::path::Path::new(path));
+                }
+
+                if let Ok(session_uuid) = Uuid::parse_str(&session_id_str) {
+                    let _ = storage::store_session_history_stop(&self.pool, session_uuid, chrono::Utc::now(), Some(-1)).await;
+                }
+            }
+        }
+
+        let term_status = serde_json::to_string(&SessionStatus::Terminated).unwrap_or_default();
+        let _ = sqlx::query("UPDATE sessions SET status = ? WHERE status = ?")
+            .bind(term_status)
+            .bind(active_status_str)
+            .execute(&self.pool)
+            .await;
+
+        if let Some(parent) = db_path.parent() {
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            if name.starts_with(".envguard_ephemeral_") && name.ends_with(".env") {
+                                let _ = std::fs::remove_file(&path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn change_master_password(
+        &mut self,
+        db_path: &Path,
+        new_password: &str,
+    ) -> Result<(), ControllerError> {
         let new_salt = crypto::generate_vault_salt();
         let new_master_secret = crypto::derive_master_key(new_password, &new_salt)?;
         let (new_db_key, new_master_key) = crypto::derive_split_keys(&new_master_secret)?;
@@ -88,7 +150,8 @@ impl envGuard {
             for c in creds {
                 let plain = crypto::decrypt_value(&c.encrypted_value, &c.nonce, &self.master_key)?;
                 let (new_enc, new_nonce) = crypto::encrypt_value(&plain, &new_master_key)?;
-                storage::update_credential_encryption(&self.pool, c.id, &new_enc, &new_nonce).await?;
+                storage::update_credential_encryption(&self.pool, c.id, &new_enc, &new_nonce)
+                    .await?;
             }
         }
 
@@ -101,15 +164,18 @@ impl envGuard {
 
         let hex_new_db_key = hex::encode(*new_db_key);
         sqlx::query(&format!("PRAGMA rekey = '{}'", hex_new_db_key))
-            .execute(&self.pool).await
-            .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e)))?;
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e))
+            })?;
 
         let salt_path = db_path.with_extension("salt");
         std::fs::write(&salt_path, new_salt)
             .map_err(|e| ControllerError::Storage(crate::env_guard::errors::StorageError::Io(e)))?;
 
         self.master_key = new_master_key;
-        
+
         Ok(())
     }
 
@@ -145,10 +211,7 @@ impl envGuard {
         Ok(())
     }
 
-    pub async fn get_profile(
-        &self,
-        profile_id: Uuid,
-    ) -> Result<Option<Profile>, ControllerError> {
+    pub async fn get_profile(&self, profile_id: Uuid) -> Result<Option<Profile>, ControllerError> {
         let p = storage::get_profile(&self.pool, profile_id).await?;
         Ok(p)
     }
@@ -173,24 +236,26 @@ impl envGuard {
     }
 
     pub async fn duplicate_profile(&self, profile_id: Uuid) -> Result<Profile, ControllerError> {
-        let p = storage::get_profile(&self.pool, profile_id)
-            .await?
-            .ok_or(ControllerError::Storage(crate::env_guard::errors::StorageError::ProfileNotFound(profile_id)))?;
+        let p =
+            storage::get_profile(&self.pool, profile_id)
+                .await?
+                .ok_or(ControllerError::Storage(
+                    crate::env_guard::errors::StorageError::ProfileNotFound(profile_id),
+                ))?;
         let new_name = format!("{} (Copy)", p.name);
-        
+
         // 1. Create the new profile
-        let new_profile = self.create_profile(
-            &new_name,
-            p.description.as_deref(),
-            p.session_rules,
-        ).await?;
+        let new_profile = self
+            .create_profile(&new_name, p.description.as_deref(), p.session_rules)
+            .await?;
 
         // 2. Fetch and decrypt credentials
         let creds = self.get_decrypted_credentials(profile_id).await?;
 
         // 3. Re-encrypt and store for the new profile
         for cred in creds {
-            self.add_credential(new_profile.id, &cred.key, cred.value.as_ref()).await?;
+            self.add_credential(new_profile.id, &cred.key, cred.value.as_ref())
+                .await?;
         }
 
         Ok(new_profile)
@@ -224,7 +289,8 @@ impl envGuard {
         let encrypted = storage::get_credentials_for_profile(&self.pool, profile_id).await?;
         let mut results = Vec::new();
         for cred in encrypted {
-            let plaintext = crypto::decrypt_value(&cred.encrypted_value, &cred.nonce, &self.master_key)?;
+            let plaintext =
+                crypto::decrypt_value(&cred.encrypted_value, &cred.nonce, &self.master_key)?;
             results.push(PlaintextCredential {
                 id: cred.id,
                 profile_id: cred.profile_id,
@@ -243,16 +309,15 @@ impl envGuard {
         Ok(list)
     }
 
-    pub async fn decrypt_credential(
-        &self,
-        credential_id: Uuid,
-    ) -> Result<String, ControllerError> {
+    pub async fn decrypt_credential(&self, credential_id: Uuid) -> Result<String, ControllerError> {
         let opt = storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
         if let Some((enc_val, nonce)) = opt {
             let plaintext = crypto::decrypt_value(&enc_val, &nonce, &self.master_key)?;
             Ok((*plaintext).clone())
         } else {
-            Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
+            Err(ControllerError::Storage(
+                crate::env_guard::errors::StorageError::CredentialNotFound(credential_id),
+            ))
         }
     }
 
@@ -269,10 +334,18 @@ impl envGuard {
         let meta_opt = storage::get_credential_metadata(&self.pool, credential_id).await?;
 
         if let Some((profile_id, key, created_at, tags)) = meta_opt {
-            let val_opt = storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
+            let val_opt =
+                storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
             if let Some((old_enc, old_nonce)) = val_opt {
                 // Save history
-                storage::insert_credential_history(&self.pool, credential_id, &old_enc, &old_nonce, Utc::now()).await?;
+                storage::insert_credential_history(
+                    &self.pool,
+                    credential_id,
+                    &old_enc,
+                    &old_nonce,
+                    Utc::now(),
+                )
+                .await?;
             }
 
             let (encrypted_value, nonce) = crypto::encrypt_value(new_value, &self.master_key)?;
@@ -289,7 +362,9 @@ impl envGuard {
             storage::upsert_credential(&self.pool, &cred).await?;
             Ok(())
         } else {
-            Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
+            Err(ControllerError::Storage(
+                crate::env_guard::errors::StorageError::CredentialNotFound(credential_id),
+            ))
         }
     }
 
@@ -300,7 +375,8 @@ impl envGuard {
     ) -> Result<(), ControllerError> {
         let meta_opt = storage::get_credential_metadata(&self.pool, credential_id).await?;
         if let Some((profile_id, key, created_at, _old_tags)) = meta_opt {
-            let val_opt = storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
+            let val_opt =
+                storage::get_encrypted_credential_value(&self.pool, credential_id).await?;
             if let Some((encrypted_value, nonce)) = val_opt {
                 let cred = Credential {
                     id: credential_id,
@@ -315,10 +391,14 @@ impl envGuard {
                 storage::upsert_credential(&self.pool, &cred).await?;
                 Ok(())
             } else {
-                Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
+                Err(ControllerError::Storage(
+                    crate::env_guard::errors::StorageError::CredentialNotFound(credential_id),
+                ))
             }
         } else {
-            Err(ControllerError::Storage(crate::env_guard::errors::StorageError::CredentialNotFound(credential_id)))
+            Err(ControllerError::Storage(
+                crate::env_guard::errors::StorageError::CredentialNotFound(credential_id),
+            ))
         }
     }
 
@@ -335,6 +415,11 @@ impl envGuard {
         Ok(hist)
     }
 
+    pub async fn get_session_history(&self) -> Result<Vec<crate::env_guard::models::SessionHistoryEntry>, ControllerError> {
+        let hist = storage::get_session_history(&self.pool).await?;
+        Ok(hist)
+    }
+
     pub async fn start_session(
         &self,
         profile_id: Uuid,
@@ -343,18 +428,33 @@ impl envGuard {
         let profile_opt = storage::get_profile(&self.pool, profile_id).await?;
         let profile = match profile_opt {
             Some(p) => p,
-            None => return Err(ControllerError::Storage(crate::env_guard::errors::StorageError::ProfileNotFound(profile_id))),
+            None => {
+                return Err(ControllerError::Storage(
+                    crate::env_guard::errors::StorageError::ProfileNotFound(profile_id),
+                ))
+            }
         };
-        if !profile.session_rules.allowed_shells.is_empty() && !profile.session_rules.allowed_shells.contains(&shell) {
-            return Err(ControllerError::Session(crate::env_guard::errors::SessionError::ShellNotFound(format!("{:?}", shell))));
+        if !profile.session_rules.allowed_shells.is_empty()
+            && !profile.session_rules.allowed_shells.contains(&shell)
+        {
+            return Err(ControllerError::Session(
+                crate::env_guard::errors::SessionError::ShellNotFound(format!("{:?}", shell)),
+            ));
         }
         let decrypted_creds = self.get_decrypted_credentials(profile_id).await?;
-        let session = session::spawn_session(&profile, decrypted_creds, shell, &self.pool, Some(self.active_sessions.clone())).await
-            .map_err(ControllerError::Session)?;
-        
+        let session = session::spawn_session(
+            &profile,
+            decrypted_creds,
+            shell,
+            &self.pool,
+            Some(self.active_sessions.clone()),
+        )
+        .await
+        .map_err(ControllerError::Session)?;
+
         let mut sessions = self.active_sessions.lock().await;
         sessions.insert(session.id, session.clone());
-        
+
         // Update last_used_at
         storage::update_profile_last_used(&self.pool, profile_id).await?;
 
@@ -375,14 +475,18 @@ impl envGuard {
         let mut sessions = self.active_sessions.lock().await;
         let mut leaked = Vec::new();
         if let Some(session) = sessions.remove(&session_id) {
-            let decrypted = self.get_decrypted_credentials(session.profile_id).await.unwrap_or_default();
+            let decrypted = self
+                .get_decrypted_credentials(session.profile_id)
+                .await
+                .unwrap_or_default();
             let keys: Vec<String> = decrypted.into_iter().map(|c| c.key).collect();
             let _ = session::remove_environment(&keys).await;
             if let Ok(leak) = session::audit_environment(&keys).await {
                 leaked = leak;
             }
 
-            session::terminate_session(session_id, &self.pool).await
+            session::terminate_session(session_id, &self.pool)
+                .await
                 .map_err(ControllerError::Session)?;
         }
         Ok(leaked)
@@ -393,7 +497,10 @@ impl envGuard {
         sessions.values().cloned().collect()
     }
 
-    pub async fn scan_for_env_files(&self, directory: &Path) -> Result<Vec<PathBuf>, ControllerError> {
+    pub async fn scan_for_env_files(
+        &self,
+        directory: &Path,
+    ) -> Result<Vec<PathBuf>, ControllerError> {
         let dir = directory.to_path_buf();
         tokio::task::spawn_blocking(move || {
             let mut results = Vec::new();
@@ -422,8 +529,13 @@ impl envGuard {
             }
             scan_dir_recursive(&dir, &mut results)?;
             Ok(results)
-        }).await
-        .map_err(|_| ControllerError::Session(crate::env_guard::errors::SessionError::PtyError("Scan thread panicked".to_string())))?
+        })
+        .await
+        .map_err(|_| {
+            ControllerError::Session(crate::env_guard::errors::SessionError::PtyError(
+                "Scan thread panicked".to_string(),
+            ))
+        })?
         .map_err(|e| ControllerError::Session(crate::env_guard::errors::SessionError::Io(e)))
     }
 
@@ -440,13 +552,86 @@ impl envGuard {
         }
         false
     }
+
+    pub async fn spawn_process_with_env(
+        &self,
+        profile_id: Uuid,
+        command: &str,
+    ) -> Result<u32, ControllerError> {
+        let profile_opt = storage::get_profile(&self.pool, profile_id).await?;
+        let profile = match profile_opt {
+            Some(p) => p,
+            None => {
+                return Err(ControllerError::Storage(
+                    crate::env_guard::errors::StorageError::ProfileNotFound(profile_id),
+                ))
+            }
+        };
+
+        let decrypted = self.get_decrypted_credentials(profile_id).await?;
+        let inherit = profile.session_rules.inherit_parent_env.unwrap_or(true);
+
+        let mut cmd = if cfg!(target_os = "windows") {
+            let mut c = std::process::Command::new("cmd");
+            c.arg("/c").arg(command);
+            c
+        } else {
+            let mut c = std::process::Command::new("sh");
+            c.arg("-c").arg(command);
+            c
+        };
+
+        if !inherit {
+            cmd.env_clear();
+        }
+
+        for cred in decrypted {
+            cmd.env(&cred.key, &*cred.value);
+        }
+
+        let child = cmd.spawn().map_err(|e| ControllerError::Session(crate::env_guard::errors::SessionError::Io(e)))?;
+        let pid = child.id();
+
+        let session_id = Uuid::new_v4();
+        let started_at = Utc::now();
+        let session = RuntimeSession {
+            id: session_id,
+            profile_id,
+            shell: ShellType::Custom(command.to_string()),
+            started_at,
+            expires_at: None,
+            pid: Some(pid),
+            status: SessionStatus::Active,
+            ephemeral_env_path: None,
+        };
+
+        storage::record_session(&self.pool, &session).await?;
+        let _ = storage::store_session_history_start(&self.pool, session_id, profile_id, &session.shell, started_at).await;
+
+        let mut sessions = self.active_sessions.lock().await;
+        sessions.insert(session_id, session);
+
+        let pool_clone = self.pool.clone();
+        tokio::spawn(async move {
+            let mut child = child;
+            let status = tokio::task::spawn_blocking(move || child.wait()).await;
+            let exit_code = match status {
+                Ok(Ok(s)) => s.code().unwrap_or(0),
+                _ => -1,
+            };
+            let _ = storage::update_session_status(&pool_clone, session_id, SessionStatus::Terminated).await;
+            let _ = storage::store_session_history_stop(&pool_clone, session_id, Utc::now(), Some(exit_code)).await;
+        });
+
+        Ok(pid)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::env_guard::models::SessionStatus;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn full_add_retrieve_decrypt_cycle() {
@@ -458,11 +643,20 @@ mod tests {
             expiration_seconds: None,
             allowed_shells: vec![],
             require_auth_on_resume: false,
+            ephemeral_env_drop: None,
+            ephemeral_env_dir: None,
+            inherit_parent_env: None,
         };
         let profile = controller.create_profile("Dev", None, rules).await.unwrap();
 
-        controller.add_credential(profile.id, "DB_HOST", "localhost").await.unwrap();
-        let decrypted = controller.get_decrypted_credentials(profile.id).await.unwrap();
+        controller
+            .add_credential(profile.id, "DB_HOST", "localhost")
+            .await
+            .unwrap();
+        let decrypted = controller
+            .get_decrypted_credentials(profile.id)
+            .await
+            .unwrap();
         assert_eq!(decrypted.len(), 1);
         assert_eq!(decrypted[0].key, "DB_HOST");
         assert_eq!(*decrypted[0].value, "localhost");
@@ -488,15 +682,22 @@ mod tests {
             expiration_seconds: Some(1),
             allowed_shells: vec![ShellType::Cmd, ShellType::Bash],
             require_auth_on_resume: false,
+            ephemeral_env_drop: None,
+            ephemeral_env_dir: None,
+            inherit_parent_env: None,
         };
         let profile = controller.create_profile("Dev", None, rules).await.unwrap();
-        
-        let shell = if cfg!(target_os = "windows") { ShellType::Cmd } else { ShellType::Bash };
+
+        let shell = if cfg!(target_os = "windows") {
+            ShellType::Cmd
+        } else {
+            ShellType::Bash
+        };
         let session = controller.start_session(profile.id, shell).await.unwrap();
         assert_eq!(session.status, SessionStatus::Active);
 
         tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-        
+
         let active = controller.list_active_sessions().await;
         assert_eq!(active.len(), 0);
     }

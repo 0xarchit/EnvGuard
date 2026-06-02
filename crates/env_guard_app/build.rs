@@ -21,5 +21,8 @@ fn main() {
                 .as_secs() as i64
         });
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", timestamp);
-    println!("cargo:rustc-env=BUILD_TARGET={}", std::env::var("TARGET").unwrap_or_default());
+    println!(
+        "cargo:rustc-env=BUILD_TARGET={}",
+        std::env::var("TARGET").unwrap_or_default()
+    );
 }

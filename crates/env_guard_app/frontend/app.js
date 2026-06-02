@@ -44,6 +44,11 @@ const registerApp = () => {
     },
     rulesTimeout: "",
     rulesRequireAuth: false,
+    ephemeralEnvDrop: false,
+    ephemeralEnvDir: "",
+    inheritParentEnv: true,
+    arbitraryCommand: "",
+    sessionHistory: [],
     rulesShells: "",
     newSecretKey: "",
     newSecretValue: "",
@@ -337,6 +342,7 @@ const registerApp = () => {
         this.activeView = "profiles";
         await this.loadProfiles();
         await this.loadSessions();
+        await this.loadSessionHistory();
         if (logs && logs.length > 0) {
             this.showToast("Vault unlocked successfully. Warning: " + logs.length + " failed attempt(s) detected previously.", "warning");
         } else {
@@ -376,6 +382,7 @@ const registerApp = () => {
         this.activeView = "profiles";
         await this.loadProfiles();
         await this.loadSessions();
+        await this.loadSessionHistory();
         if (logs && logs.length > 0) {
           this.showToast("Vault unlocked from keychain. Warning: " + logs.length + " failed attempt(s) detected.", "warning");
         } else {
@@ -608,6 +615,9 @@ const registerApp = () => {
         this.rulesTimeout = p.session_rules.expiration_seconds !== null ? p.session_rules.expiration_seconds : "";
         this.rulesShells = p.session_rules.allowed_shells.map(s => typeof s === 'string' ? s : Object.keys(s)[0]).join(", ");
         this.rulesRequireAuth = p.session_rules.require_auth_on_resume || false;
+        this.ephemeralEnvDrop = p.session_rules.ephemeral_env_drop || false;
+        this.ephemeralEnvDir = p.session_rules.ephemeral_env_dir || "";
+        this.inheritParentEnv = p.session_rules.inherit_parent_env !== false;
         await this.loadCredentials(id);
         this.activeView = "profile-detail";
       } catch (e) {
@@ -640,7 +650,10 @@ const registerApp = () => {
         const rules = {
           expiration_seconds: timeout,
           allowed_shells: shells,
-          require_auth_on_resume: this.rulesRequireAuth
+          require_auth_on_resume: this.rulesRequireAuth,
+          ephemeral_env_drop: this.ephemeralEnvDrop,
+          ephemeral_env_dir: this.ephemeralEnvDir,
+          inherit_parent_env: this.inheritParentEnv
         };
         await window.__TAURI__.core.invoke("update_profile_rules", {
           id: this.selectedProfile.id,
@@ -651,6 +664,67 @@ const registerApp = () => {
         this.showToast("Failed to save rules: " + e, "danger");
       } finally {
         this.loading = false;
+      }
+    },
+
+    async pickEphemeralDir() {
+      try {
+        const { open } = window.__TAURI__.dialog;
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: "Select Directory for Ephemeral .env file"
+        });
+        if (selected) {
+          this.ephemeralEnvDir = selected;
+        }
+      } catch (e) {
+        this.showToast("Failed to select directory: " + e, "danger");
+      }
+    },
+
+    async openVSCode(profileId) {
+      this.loading = true;
+      try {
+        await window.__TAURI__.core.invoke("open_in_vscode", { profileId });
+        this.showToast("VS Code opened successfully", "success");
+        await this.loadSessions();
+        await this.loadSessionHistory();
+      } catch (e) {
+        this.showToast("Failed to open VS Code: " + e, "danger");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async runCommand(profileId) {
+      if (!this.arbitraryCommand.trim()) {
+        this.showToast("Command is required", "danger");
+        return;
+      }
+      this.loading = true;
+      try {
+        const pid = await window.__TAURI__.core.invoke("spawn_process", {
+          profileId,
+          command: this.arbitraryCommand.trim()
+        });
+        this.showToast(`Process spawned (PID: ${pid})`, "success");
+        this.arbitraryCommand = "";
+        await this.loadSessions();
+        await this.loadSessionHistory();
+      } catch (e) {
+        this.showToast("Failed to run command: " + e, "danger");
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async loadSessionHistory() {
+      try {
+        const list = await window.__TAURI__.core.invoke("list_session_history");
+        this.sessionHistory = list;
+      } catch (e) {
+        console.error("Failed to load session history:", e);
       }
     },
 
@@ -1013,6 +1087,7 @@ const registerApp = () => {
           try {
             const leaked = await window.__TAURI__.core.invoke("stop_session", { sessionId: id });
             await this.loadSessions();
+            await this.loadSessionHistory();
             if (leaked && leaked.length > 0) {
               this.showToast(`Session terminated. SECURITY WARNING: The following variables could not be cleared from the environment and may have leaked: ${leaked.join(", ")}`, "danger");
             } else {
