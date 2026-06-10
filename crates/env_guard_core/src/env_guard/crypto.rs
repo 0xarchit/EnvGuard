@@ -7,6 +7,7 @@ use rand::RngCore;
 use sha2::Sha256;
 use zeroize::Zeroizing;
 
+#[must_use] 
 pub fn generate_vault_salt() -> [u8; 16] {
     let mut salt = [0u8; 16];
     rand::rngs::OsRng.fill_bytes(&mut salt);
@@ -68,6 +69,76 @@ pub fn decrypt_value(
     Ok(Zeroizing::new(plaintext_string))
 }
 
+#[cfg(windows)]
+pub fn encrypt_dpapi(data: &[u8]) -> Result<Vec<u8>, String> {
+    use windows::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
+    use windows::Win32::Foundation::LocalFree;
+    
+    let input_blob = CRYPT_INTEGER_BLOB {
+        cbData: u32::try_from(data.len()).map_err(|e| e.to_string())?,
+        pbData: data.as_ptr().cast_mut(),
+    };
+    let mut output_blob = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+    
+    unsafe {
+        let res = CryptProtectData(
+            &raw const input_blob,
+            windows::core::w!("EnvGuard Master Key"),
+            None,
+            None,
+            None,
+            0,
+            &raw mut output_blob,
+        );
+        if res.is_ok() {
+            let slice = std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize);
+            let result = slice.to_vec();
+            let _ = LocalFree(windows::Win32::Foundation::HLOCAL(output_blob.pbData.cast::<std::ffi::c_void>()));
+            Ok(result)
+        } else {
+            Err("DPAPI encryption failed".to_string())
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn decrypt_dpapi(data: &[u8]) -> Result<Vec<u8>, String> {
+    use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
+    use windows::Win32::Foundation::LocalFree;
+    
+    let input_blob = CRYPT_INTEGER_BLOB {
+        cbData: u32::try_from(data.len()).map_err(|e| e.to_string())?,
+        pbData: data.as_ptr().cast_mut(),
+    };
+    let mut output_blob = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+    
+    unsafe {
+        let res = CryptUnprotectData(
+            &raw const input_blob,
+            None,
+            None,
+            None,
+            None,
+            0,
+            &raw mut output_blob,
+        );
+        if res.is_ok() {
+            let slice = std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize);
+            let result = slice.to_vec();
+            let _ = LocalFree(windows::Win32::Foundation::HLOCAL(output_blob.pbData.cast::<std::ffi::c_void>()));
+            Ok(result)
+        } else {
+            Err("DPAPI decryption failed".to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,75 +169,5 @@ mod tests {
         let (encrypted, nonce) = encrypt_value(secret, &key1).unwrap();
         let decrypt_res = decrypt_value(&encrypted, &nonce, &key2);
         assert!(decrypt_res.is_err());
-    }
-}
-
-#[cfg(windows)]
-pub fn encrypt_dpapi(data: &[u8]) -> Result<Vec<u8>, String> {
-    use windows::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
-    use windows::Win32::Foundation::LocalFree;
-    
-    let mut input_blob = CRYPT_INTEGER_BLOB {
-        cbData: data.len() as u32,
-        pbData: data.as_ptr() as *mut u8,
-    };
-    let mut output_blob = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: std::ptr::null_mut(),
-    };
-    
-    unsafe {
-        let res = CryptProtectData(
-            &mut input_blob,
-            windows::core::w!("EnvGuard Master Key"),
-            None,
-            None,
-            None,
-            0,
-            &mut output_blob,
-        );
-        if res.is_ok() {
-            let slice = std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize);
-            let result = slice.to_vec();
-            let _ = LocalFree(windows::Win32::Foundation::HLOCAL(output_blob.pbData as *mut std::ffi::c_void));
-            Ok(result)
-        } else {
-            Err("DPAPI encryption failed".to_string())
-        }
-    }
-}
-
-#[cfg(windows)]
-pub fn decrypt_dpapi(data: &[u8]) -> Result<Vec<u8>, String> {
-    use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
-    use windows::Win32::Foundation::LocalFree;
-    
-    let mut input_blob = CRYPT_INTEGER_BLOB {
-        cbData: data.len() as u32,
-        pbData: data.as_ptr() as *mut u8,
-    };
-    let mut output_blob = CRYPT_INTEGER_BLOB {
-        cbData: 0,
-        pbData: std::ptr::null_mut(),
-    };
-    
-    unsafe {
-        let res = CryptUnprotectData(
-            &mut input_blob,
-            None,
-            None,
-            None,
-            None,
-            0,
-            &mut output_blob,
-        );
-        if res.is_ok() {
-            let slice = std::slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize);
-            let result = slice.to_vec();
-            let _ = LocalFree(windows::Win32::Foundation::HLOCAL(output_blob.pbData as *mut std::ffi::c_void));
-            Ok(result)
-        } else {
-            Err("DPAPI decryption failed".to_string())
-        }
     }
 }

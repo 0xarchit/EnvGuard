@@ -10,6 +10,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use std::fmt::Write;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 pub fn resolve_shell_path(shell: &ShellType) -> Result<PathBuf, SessionError> {
     match shell {
@@ -86,8 +90,8 @@ pub async fn kill_process(pid: u32) -> Result<(), SessionError> {
 }
 
 #[cfg(windows)]
+#[allow(clippy::unused_async)]
 pub async fn kill_process(_pid: u32) -> Result<(), SessionError> {
-    // No longer applicable since we don't spawn child processes
     Ok(())
 }
 
@@ -98,21 +102,21 @@ pub async fn inject_environment(credentials: &[PlaintextCredential]) -> Result<(
     }
     let mut script = String::new();
     for cred in credentials {
-        let key = cred.key.replace("'", "''");
-        let val = cred.value.replace("'", "''");
-        script.push_str(&format!(
-            "[Environment]::SetEnvironmentVariable('{}', '{}', 'User');\n",
-            key, val
-        ));
+        let key = cred.key.replace('\'', "''");
+        let val = cred.value.replace('\'', "''");
+        let _ = writeln!(script, "[Environment]::SetEnvironmentVariable('{key}', '{val}', 'User');");
     }
-    use std::os::windows::process::CommandExt;
-    let output = std::process::Command::new("powershell")
-        .arg("-NoProfile")
-        .arg("-Command")
-        .arg(&script)
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-        .map_err(SessionError::Io)?;
+    let output = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(script)
+            .creation_flags(0x0800_0000)
+            .output()
+    })
+    .await
+    .map_err(|e| SessionError::PtyError(e.to_string()))?
+    .map_err(SessionError::Io)?;
 
     if !output.status.success() {
         return Err(SessionError::PtyError(
@@ -129,20 +133,20 @@ pub async fn remove_environment(keys: &[String]) -> Result<(), SessionError> {
     }
     let mut script = String::new();
     for key in keys {
-        let k = key.replace("'", "''");
-        script.push_str(&format!(
-            "[Environment]::SetEnvironmentVariable('{}', $null, 'User');\n",
-            k
-        ));
+        let k = key.replace('\'', "''");
+        let _ = writeln!(script, "[Environment]::SetEnvironmentVariable('{k}', $null, 'User');");
     }
-    use std::os::windows::process::CommandExt;
-    let output = std::process::Command::new("powershell")
-        .arg("-NoProfile")
-        .arg("-Command")
-        .arg(&script)
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-        .map_err(SessionError::Io)?;
+    let output = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(script)
+            .creation_flags(0x0800_0000)
+            .output()
+    })
+    .await
+    .map_err(|e| SessionError::PtyError(e.to_string()))?
+    .map_err(SessionError::Io)?;
 
     if !output.status.success() {
         return Err(SessionError::PtyError(
@@ -160,42 +164,45 @@ pub async fn audit_environment(keys: &[String]) -> Result<Vec<String>, SessionEr
     let mut script = String::new();
     script.push_str("$leaked = @();\n");
     for key in keys {
-        let k = key.replace("'", "''");
-        script.push_str(&format!(
-            "if ([Environment]::GetEnvironmentVariable('{}', 'User')) {{ $leaked += '{}' }}\n",
-            k, k
-        ));
+        let k = key.replace('\'', "''");
+        let _ = writeln!(script, "if ([Environment]::GetEnvironmentVariable('{k}', 'User')) {{ $leaked += '{k}' }}");
     }
     script.push_str("if ($leaked.Count -gt 0) { Write-Output ($leaked -join ',') }\n");
 
-    use std::os::windows::process::CommandExt;
-    let output = std::process::Command::new("powershell")
-        .arg("-NoProfile")
-        .arg("-Command")
-        .arg(&script)
-        .creation_flags(0x08000000)
-        .output()
-        .map_err(SessionError::Io)?;
+    let output = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("powershell")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(script)
+            .creation_flags(0x0800_0000)
+            .output()
+    })
+    .await
+    .map_err(|e| SessionError::PtyError(e.to_string()))?
+    .map_err(SessionError::Io)?;
 
     let leaked_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if leaked_str.is_empty() {
         Ok(Vec::new())
     } else {
-        Ok(leaked_str.split(',').map(|s| s.to_string()).collect())
+        Ok(leaked_str.split(',').map(std::string::ToString::to_string).collect())
     }
 }
 
 #[cfg(not(windows))]
+#[allow(clippy::unused_async)]
 pub async fn inject_environment(_credentials: &[PlaintextCredential]) -> Result<(), SessionError> {
     Ok(())
 }
 
 #[cfg(not(windows))]
+#[allow(clippy::unused_async)]
 pub async fn remove_environment(_keys: &[String]) -> Result<(), SessionError> {
     Ok(())
 }
 
 #[cfg(not(windows))]
+#[allow(clippy::unused_async)]
 pub async fn audit_environment(_keys: &[String]) -> Result<Vec<String>, SessionError> {
     Ok(Vec::new())
 }
@@ -207,15 +214,15 @@ pub fn write_ephemeral_env(
 ) -> Result<PathBuf, SessionError> {
     let dir_path = std::path::PathBuf::from(target_dir);
     if !dir_path.exists() {
-        return Err(SessionError::PtyError(format!("Target directory does not exist: {}", target_dir)));
+        return Err(SessionError::PtyError(format!("Target directory does not exist: {target_dir}")));
     }
-    let file_name = format!(".envguard_ephemeral_{}.env", session_id);
+    let file_name = format!(".envguard_ephemeral_{session_id}.env");
     let file_path = dir_path.join(file_name);
 
     let mut content = String::new();
     for cred in credentials {
         let escaped_val = cred.value.replace('"', "\\\"");
-        content.push_str(&format!("{}=\"{}\"\n", cred.key, escaped_val));
+        let _ = writeln!(content, "{}=\"{escaped_val}\"", cred.key);
     }
 
     std::fs::write(&file_path, content).map_err(SessionError::Io)?;
@@ -247,13 +254,16 @@ pub fn cleanup_ephemeral_env(file_path: &str) -> Result<(), SessionError> {
     Ok(())
 }
 
-pub async fn spawn_session(
+pub async fn spawn_session<S>(
     profile: &Profile,
     credentials: Vec<PlaintextCredential>,
     shell: ShellType,
     pool: &SqlitePool,
-    active_sessions: Option<Arc<Mutex<HashMap<Uuid, RuntimeSession>>>>,
-) -> Result<RuntimeSession, SessionError> {
+    active_sessions: Option<Arc<Mutex<HashMap<Uuid, RuntimeSession, S>>>>,
+) -> Result<RuntimeSession, SessionError>
+where
+    S: std::hash::BuildHasher + Send + Sync + 'static,
+{
     let _shell_path = resolve_shell_path(&shell)?;
 
     let session_id = Uuid::new_v4();
@@ -280,7 +290,7 @@ pub async fn spawn_session(
     let expires_at = profile
         .session_rules
         .expiration_seconds
-        .map(|s| started_at + chrono::Duration::seconds(s as i64));
+        .map(|s| started_at + chrono::Duration::seconds(i64::try_from(s).unwrap_or(i64::MAX)));
 
     let session = RuntimeSession {
         id: session_id,
@@ -347,7 +357,9 @@ pub async fn terminate_session(
 
     if let Some((profile_id, pid_opt, ephemeral_path_opt)) = session_opt {
         if let Some(pid) = pid_opt {
-            let _ = kill_process(pid as u32).await;
+            if let Ok(pid_u32) = u32::try_from(pid) {
+                let _ = kill_process(pid_u32).await;
+            }
         }
 
         if let Some(ref path) = ephemeral_path_opt {
