@@ -87,18 +87,20 @@ pub async fn unlock_vault(
     }
 
     let mut sec_state = get_security_state(&db_path).await;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let now = u64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+    )
+    .unwrap_or(u64::MAX);
 
     if sec_state.failed_attempts >= 3 {
         let delay_ms = 2u64.pow(sec_state.failed_attempts - 3) * 1000;
         if now < sec_state.last_failed_attempt_ms + delay_ms {
             let wait_sec = ((sec_state.last_failed_attempt_ms + delay_ms - now) / 1000) + 1;
             return Err(format!(
-                "Too many failed attempts. Try again in {} seconds.",
-                wait_sec
+                "Too many failed attempts. Try again in {wait_sec} seconds."
             ));
         }
     }
@@ -121,9 +123,8 @@ pub async fn unlock_vault(
                 || s.contains("integrity")
             {
                 return Err("Incorrect master password".to_string());
-            } else {
-                return Err(s);
             }
+            return Err(s);
         }
     };
 
@@ -439,11 +440,12 @@ pub async fn scan_for_env_files(
         .into_iter()
         .map(|p| {
             let path_str = p.to_string_lossy().to_string();
-            let is_env = p
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map(|name| name.starts_with(".env") || name.ends_with(".env"))
-                .unwrap_or(false);
+            let is_env = p.file_name().and_then(|s| s.to_str()).is_some_and(|name| {
+                name.starts_with(".env")
+                    || std::path::Path::new(name)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("env"))
+            });
             ScannedFile {
                 path: path_str,
                 is_env,
@@ -503,7 +505,7 @@ pub async fn open_vault_directory() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn generate_secure_token(length: usize, include_symbols: bool) -> Result<String, String> {
+pub fn generate_secure_token(length: usize, include_symbols: bool) -> String {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let charset_alphanumeric = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -523,7 +525,7 @@ pub fn generate_secure_token(length: usize, include_symbols: bool) -> Result<Str
         })
         .collect();
 
-    Ok(token)
+    token
 }
 
 #[tauri::command]
@@ -532,6 +534,7 @@ pub async fn export_credentials(
     credentials_to_export: Vec<(String, String)>,
     export_path: String,
 ) -> Result<(), String> {
+    use std::fmt::Write;
     use std::fs;
 
     let mut exported_env = String::new();
@@ -546,7 +549,7 @@ pub async fn export_credentials(
             .await
             .map_err(|e| e.to_string())?;
         let escaped_val = decrypted.replace('"', "\\\"");
-        exported_env.push_str(&format!("{}=\"{}\"\n", key, escaped_val));
+        let _ = writeln!(exported_env, "{key}=\"{escaped_val}\"");
     }
 
     fs::write(&export_path, exported_env).map_err(|e| e.to_string())?;
@@ -650,7 +653,9 @@ pub async fn get_password_from_keychain() -> Result<String, String> {
         if let Ok(dpapi_path) = get_dpapi_path() {
             if dpapi_path.exists() {
                 if let Ok(encrypted) = std::fs::read(&dpapi_path) {
-                    if let Ok(decrypted) = env_guard_core::env_guard::crypto::decrypt_dpapi(&encrypted) {
+                    if let Ok(decrypted) =
+                        env_guard_core::env_guard::crypto::decrypt_dpapi(&encrypted)
+                    {
                         if let Ok(s) = String::from_utf8(decrypted) {
                             return Ok(s);
                         }
@@ -686,7 +691,10 @@ pub async fn list_session_history(
 ) -> Result<Vec<env_guard_core::env_guard::models::SessionHistoryEntry>, String> {
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.get_session_history().await.map_err(|e| e.to_string())
+    engine
+        .get_session_history()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -697,7 +705,10 @@ pub async fn open_in_vscode(
     let profile_uuid = Uuid::parse_str(&profile_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    engine.spawn_process_with_env(profile_uuid, "code .").await.map_err(|e| e.to_string())?;
+    engine
+        .spawn_process_with_env(profile_uuid, "code .")
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -710,6 +721,9 @@ pub async fn spawn_process(
     let profile_uuid = Uuid::parse_str(&profile_id).map_err(|e| e.to_string())?;
     let lock = state.inner.lock().await;
     let engine = lock.as_ref().ok_or("Vault is locked")?;
-    let pid = engine.spawn_process_with_env(profile_uuid, &command).await.map_err(|e| e.to_string())?;
+    let pid = engine
+        .spawn_process_with_env(profile_uuid, &command)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(pid)
 }

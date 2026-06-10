@@ -115,7 +115,7 @@ pub fn update_startup_registration(launch: bool) -> Result<(), String> {
             sub_key,
             0,
             KEY_SET_VALUE,
-            &mut hkey,
+            &raw mut hkey,
         );
 
         if status.is_err() {
@@ -126,12 +126,12 @@ pub fn update_startup_registration(launch: bool) -> Result<(), String> {
 
         if launch {
             let current_exe = std::env::current_exe()
-                .map_err(|e| format!("Failed to get current executable path: {}", e))?;
+                .map_err(|e| format!("Failed to get current executable path: {e}"))?;
             let quoted_path = format!("\"{}\"", current_exe.to_string_lossy());
             let path_w: Vec<u16> = quoted_path.encode_utf16().chain(std::iter::once(0)).collect();
 
             let raw_data = std::slice::from_raw_parts(
-                path_w.as_ptr() as *const u8,
+                path_w.as_ptr().cast::<u8>(),
                 path_w.len() * 2,
             );
 
@@ -152,7 +152,7 @@ pub fn update_startup_registration(launch: bool) -> Result<(), String> {
             let status = RegDeleteValueW(hkey, value_name);
             let _ = RegCloseKey(hkey);
             if status.is_err() {
-                let err_code = status.as_ref().err().map(|e| e.code().0).unwrap_or(0);
+                let err_code = status.as_ref().err().map_or(0, |e| e.code().0);
                 if err_code != 2 {
                     return Err(format!("Failed to delete registry value: {:?}", status.err()));
                 }

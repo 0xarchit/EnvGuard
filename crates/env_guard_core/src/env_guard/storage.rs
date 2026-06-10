@@ -8,15 +8,7 @@ use sqlx::{Row, SqlitePool};
 use std::path::Path;
 use uuid::Uuid;
 
-pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, StorageError> {
-    let options = SqliteConnectOptions::new()
-        .filename(path)
-        .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .pragma("key", format!("'{}'", db_key))
-        .pragma("foreign_keys", "ON");
-    let pool = SqlitePool::connect_with(options).await?;
-
+async fn create_tables(pool: &SqlitePool) -> Result<(), StorageError> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS vault_meta (
             id INTEGER PRIMARY KEY,
@@ -24,7 +16,7 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
             created_at TEXT NOT NULL
         );",
     )
-    .execute(&pool)
+    .execute(pool)
     .await?;
 
     sqlx::query(
@@ -41,12 +33,71 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
             tags TEXT NOT NULL DEFAULT '[]'
         );",
     )
-    .execute(&pool)
+    .execute(pool)
     .await?;
 
-    // Schema migration for old vaults
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS credentials (
+            id TEXT PRIMARY KEY,
+            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            encrypted_value BLOB NOT NULL,
+            nonce BLOB NOT NULL,
+            tags TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(profile_id, key)
+        );",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+            shell TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            expires_at TEXT,
+            pid INTEGER,
+            status TEXT NOT NULL,
+            ephemeral_env_path TEXT
+        );",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS session_history (
+            session_id TEXT PRIMARY KEY,
+            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+            shell TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            stopped_at TEXT,
+            exit_code INTEGER
+        );",
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS credential_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            credential_id TEXT NOT NULL REFERENCES credentials(id) ON DELETE CASCADE,
+            encrypted_value BLOB NOT NULL,
+            nonce BLOB NOT NULL,
+            updated_at TEXT NOT NULL
+        );",
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn run_migrations(pool: &SqlitePool) -> Result<(), StorageError> {
     let table_info = sqlx::query("PRAGMA table_info(profiles)")
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await?;
     let mut has_last_used = false;
     let mut has_color = false;
@@ -65,53 +116,22 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
     }
     if !has_last_used {
         sqlx::query("ALTER TABLE profiles ADD COLUMN last_used_at TEXT")
-            .execute(&pool)
+            .execute(pool)
             .await?;
     }
     if !has_color {
         sqlx::query("ALTER TABLE profiles ADD COLUMN color TEXT")
-            .execute(&pool)
+            .execute(pool)
             .await?;
     }
     if !has_tags {
         sqlx::query("ALTER TABLE profiles ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
-            .execute(&pool)
+            .execute(pool)
             .await?;
     }
 
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS credentials (
-            id TEXT PRIMARY KEY,
-            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-            key TEXT NOT NULL,
-            encrypted_value BLOB NOT NULL,
-            nonce BLOB NOT NULL,
-            tags TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            UNIQUE(profile_id, key)
-        );",
-    )
-    .execute(&pool)
-    .await?;
-
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS sessions (
-            id TEXT PRIMARY KEY,
-            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-            shell TEXT NOT NULL,
-            started_at TEXT NOT NULL,
-            expires_at TEXT,
-            pid INTEGER,
-            status TEXT NOT NULL,
-            ephemeral_env_path TEXT
-        );",
-    )
-    .execute(&pool)
-    .await?;
-
     let sessions_table_info = sqlx::query("PRAGMA table_info(sessions)")
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await?;
     let mut has_ephemeral_path = false;
     for row in sessions_table_info {
@@ -122,34 +142,23 @@ pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, Stor
     }
     if !has_ephemeral_path {
         sqlx::query("ALTER TABLE sessions ADD COLUMN ephemeral_env_path TEXT")
-            .execute(&pool)
+            .execute(pool)
             .await?;
     }
+    Ok(())
+}
 
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS session_history (
-            session_id TEXT PRIMARY KEY,
-            profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-            shell TEXT NOT NULL,
-            started_at TEXT NOT NULL,
-            stopped_at TEXT,
-            exit_code INTEGER
-        );",
-    )
-    .execute(&pool)
-    .await?;
+pub async fn init_database(path: &Path, db_key: &str) -> Result<SqlitePool, StorageError> {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .pragma("key", format!("'{db_key}'"))
+        .pragma("foreign_keys", "ON");
+    let pool = SqlitePool::connect_with(options).await?;
 
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS credential_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            credential_id TEXT NOT NULL REFERENCES credentials(id) ON DELETE CASCADE,
-            encrypted_value BLOB NOT NULL,
-            nonce BLOB NOT NULL,
-            updated_at TEXT NOT NULL
-        );",
-    )
-    .execute(&pool)
-    .await?;
+    create_tables(&pool).await?;
+    run_migrations(&pool).await?;
 
     Ok(pool)
 }
@@ -166,7 +175,7 @@ pub async fn store_profile(pool: &SqlitePool, profile: &Profile) -> Result<(), S
     .bind(&profile.name)
     .bind(&profile.description)
     .bind(rules_str)
-    .bind(if profile.is_active { 1 } else { 0 })
+    .bind(i32::from(profile.is_active))
     .bind(profile.created_at.to_rfc3339())
     .bind(profile.updated_at.to_rfc3339())
     .bind(last_used_str)
@@ -450,7 +459,7 @@ pub async fn record_session(
     .bind(shell_str)
     .bind(session.started_at.to_rfc3339())
     .bind(session.expires_at.map(|d| d.to_rfc3339()))
-    .bind(session.pid.map(|p| p as i32))
+    .bind(session.pid.map(|p| i32::try_from(p).unwrap_or(i32::MAX)))
     .bind(status_str)
     .bind(&session.ephemeral_env_path)
     .execute(pool)
@@ -513,7 +522,7 @@ pub async fn get_active_session(
             shell,
             started_at,
             expires_at,
-            pid: pid_int.map(|p| p as u32),
+            pid: pid_int.map(|p| u32::try_from(p).unwrap_or(0)),
             status,
             ephemeral_env_path: ephemeral_path_str,
         }))
@@ -589,7 +598,7 @@ pub async fn get_session_history(
             ShellType::Fish => "Fish".to_string(),
             ShellType::PowerShell => "PowerShell".to_string(),
             ShellType::Cmd => "Cmd".to_string(),
-            ShellType::Custom(s) => format!("Custom ({})", s),
+            ShellType::Custom(s) => format!("Custom ({s})"),
         };
 
         result.push(crate::env_guard::models::SessionHistoryEntry {
@@ -639,7 +648,7 @@ pub async fn update_profile_active_status(
     is_active: bool,
 ) -> Result<(), StorageError> {
     sqlx::query("UPDATE profiles SET is_active = ? WHERE id = ?")
-        .bind(if is_active { 1 } else { 0 })
+        .bind(i32::from(is_active))
         .bind(profile_id.to_string())
         .execute(pool)
         .await?;
@@ -693,6 +702,91 @@ pub async fn update_profile_rules(
         .bind(rules_str)
         .bind(Utc::now().to_rfc3339())
         .bind(profile_id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn insert_credential_history(
+    pool: &SqlitePool,
+    credential_id: Uuid,
+    encrypted_value: &[u8],
+    nonce: &[u8],
+    updated_at: DateTime<Utc>,
+) -> Result<(), StorageError> {
+    sqlx::query(
+        "INSERT INTO credential_history (credential_id, encrypted_value, nonce, updated_at) VALUES (?, ?, ?, ?)"
+    )
+    .bind(credential_id.to_string())
+    .bind(encrypted_value)
+    .bind(nonce)
+    .bind(updated_at.to_rfc3339())
+    .execute(pool).await?;
+
+    sqlx::query(
+        "DELETE FROM credential_history WHERE id NOT IN (
+            SELECT id FROM credential_history 
+            WHERE credential_id = ? 
+            ORDER BY updated_at DESC LIMIT 3
+        ) AND credential_id = ?",
+    )
+    .bind(credential_id.to_string())
+    .bind(credential_id.to_string())
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn get_credential_history(
+    pool: &SqlitePool,
+    credential_id: Uuid,
+) -> Result<Vec<(Vec<u8>, Vec<u8>, DateTime<Utc>)>, StorageError> {
+    let rows = sqlx::query(
+        "SELECT encrypted_value, nonce, updated_at FROM credential_history WHERE credential_id = ? ORDER BY updated_at DESC"
+    )
+    .bind(credential_id.to_string())
+    .fetch_all(pool).await?;
+
+    let mut hist = Vec::new();
+    for row in rows {
+        let enc: Vec<u8> = row.get("encrypted_value");
+        let non: Vec<u8> = row.get("nonce");
+        let updated_at_str: String = row.get("updated_at");
+        let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .unwrap_or(Utc::now());
+        hist.push((enc, non, updated_at));
+    }
+    Ok(hist)
+}
+
+pub async fn get_all_history_ids_and_encryptions(
+    pool: &SqlitePool,
+) -> Result<Vec<(i64, Vec<u8>, Vec<u8>)>, StorageError> {
+    let rows = sqlx::query("SELECT id, encrypted_value, nonce FROM credential_history")
+        .fetch_all(pool)
+        .await?;
+    let mut res = Vec::new();
+    for row in rows {
+        let id: i64 = row.get("id");
+        let enc: Vec<u8> = row.get("encrypted_value");
+        let non: Vec<u8> = row.get("nonce");
+        res.push((id, enc, non));
+    }
+    Ok(res)
+}
+
+pub async fn update_history_encryption(
+    pool: &SqlitePool,
+    id: i64,
+    encrypted_value: &[u8],
+    nonce: &[u8],
+) -> Result<(), StorageError> {
+    sqlx::query("UPDATE credential_history SET encrypted_value = ?, nonce = ? WHERE id = ?")
+        .bind(encrypted_value)
+        .bind(nonce)
+        .bind(id)
         .execute(pool)
         .await?;
     Ok(())
@@ -839,89 +933,4 @@ mod tests {
             .unwrap();
         assert_eq!(list.len(), 0);
     }
-}
-
-pub async fn insert_credential_history(
-    pool: &SqlitePool,
-    credential_id: Uuid,
-    encrypted_value: &[u8],
-    nonce: &[u8],
-    updated_at: DateTime<Utc>,
-) -> Result<(), StorageError> {
-    sqlx::query(
-        "INSERT INTO credential_history (credential_id, encrypted_value, nonce, updated_at) VALUES (?, ?, ?, ?)"
-    )
-    .bind(credential_id.to_string())
-    .bind(encrypted_value)
-    .bind(nonce)
-    .bind(updated_at.to_rfc3339())
-    .execute(pool).await?;
-
-    sqlx::query(
-        "DELETE FROM credential_history WHERE id NOT IN (
-            SELECT id FROM credential_history 
-            WHERE credential_id = ? 
-            ORDER BY updated_at DESC LIMIT 3
-        ) AND credential_id = ?",
-    )
-    .bind(credential_id.to_string())
-    .bind(credential_id.to_string())
-    .execute(pool)
-    .await?;
-
-    Ok(())
-}
-
-pub async fn get_credential_history(
-    pool: &SqlitePool,
-    credential_id: Uuid,
-) -> Result<Vec<(Vec<u8>, Vec<u8>, DateTime<Utc>)>, StorageError> {
-    let rows = sqlx::query(
-        "SELECT encrypted_value, nonce, updated_at FROM credential_history WHERE credential_id = ? ORDER BY updated_at DESC"
-    )
-    .bind(credential_id.to_string())
-    .fetch_all(pool).await?;
-
-    let mut hist = Vec::new();
-    for row in rows {
-        let enc: Vec<u8> = row.get("encrypted_value");
-        let non: Vec<u8> = row.get("nonce");
-        let updated_at_str: String = row.get("updated_at");
-        let updated_at = chrono::DateTime::parse_from_rfc3339(&updated_at_str)
-            .map(|dt| dt.with_timezone(&Utc))
-            .unwrap_or(Utc::now());
-        hist.push((enc, non, updated_at));
-    }
-    Ok(hist)
-}
-
-pub async fn get_all_history_ids_and_encryptions(
-    pool: &SqlitePool,
-) -> Result<Vec<(i64, Vec<u8>, Vec<u8>)>, StorageError> {
-    let rows = sqlx::query("SELECT id, encrypted_value, nonce FROM credential_history")
-        .fetch_all(pool)
-        .await?;
-    let mut res = Vec::new();
-    for row in rows {
-        let id: i64 = row.get("id");
-        let enc: Vec<u8> = row.get("encrypted_value");
-        let non: Vec<u8> = row.get("nonce");
-        res.push((id, enc, non));
-    }
-    Ok(res)
-}
-
-pub async fn update_history_encryption(
-    pool: &SqlitePool,
-    id: i64,
-    encrypted_value: &[u8],
-    nonce: &[u8],
-) -> Result<(), StorageError> {
-    sqlx::query("UPDATE credential_history SET encrypted_value = ?, nonce = ? WHERE id = ?")
-        .bind(encrypted_value)
-        .bind(nonce)
-        .bind(id)
-        .execute(pool)
-        .await?;
-    Ok(())
 }

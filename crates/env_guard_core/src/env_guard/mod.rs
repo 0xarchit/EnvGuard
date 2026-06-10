@@ -55,13 +55,11 @@ impl envGuard {
                 ControllerError::Storage(crate::env_guard::errors::StorageError::Database(e))
             })?;
 
-        use sqlx::Row;
         let integrity_result: String = row.get(0);
         if integrity_result != "ok" {
             return Err(ControllerError::Storage(
                 crate::env_guard::errors::StorageError::Migration(format!(
-                    "Vault integrity check failed: {}",
-                    integrity_result
+                    "Vault integrity check failed: {integrity_result}"
                 )),
             ));
         }
@@ -123,7 +121,11 @@ impl envGuard {
                     let path = entry.path();
                     if path.is_file() {
                         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            if name.starts_with(".envguard_ephemeral_") && name.ends_with(".env") {
+                            if name.starts_with(".envguard_ephemeral_")
+                                && std::path::Path::new(name)
+                                    .extension()
+                                    .is_some_and(|ext| ext.eq_ignore_ascii_case("env"))
+                            {
                                 let _ = std::fs::remove_file(&path);
                             }
                         }
@@ -163,7 +165,7 @@ impl envGuard {
         }
 
         let hex_new_db_key = hex::encode(*new_db_key);
-        sqlx::query(&format!("PRAGMA rekey = '{}'", hex_new_db_key))
+        sqlx::query(&format!("PRAGMA rekey = '{hex_new_db_key}'"))
             .execute(&self.pool)
             .await
             .map_err(|e| {
@@ -188,7 +190,7 @@ impl envGuard {
         let profile = Profile {
             id: Uuid::new_v4(),
             name: name.to_string(),
-            description: description.map(|s| s.to_string()),
+            description: description.map(std::string::ToString::to_string),
             created_at: Utc::now(),
             updated_at: Utc::now(),
             last_used_at: None,
@@ -426,19 +428,19 @@ impl envGuard {
         shell: ShellType,
     ) -> Result<RuntimeSession, ControllerError> {
         let profile_opt = storage::get_profile(&self.pool, profile_id).await?;
-        let profile = match profile_opt {
-            Some(p) => p,
-            None => {
+        let Some(profile) = profile_opt else {
+
+
                 return Err(ControllerError::Storage(
                     crate::env_guard::errors::StorageError::ProfileNotFound(profile_id),
-                ))
-            }
+                ));
+
         };
         if !profile.session_rules.allowed_shells.is_empty()
             && !profile.session_rules.allowed_shells.contains(&shell)
         {
             return Err(ControllerError::Session(
-                crate::env_guard::errors::SessionError::ShellNotFound(format!("{:?}", shell)),
+                crate::env_guard::errors::SessionError::ShellNotFound(format!("{shell:?}")),
             ));
         }
         let decrypted_creds = self.get_decrypted_credentials(profile_id).await?;
@@ -504,29 +506,6 @@ impl envGuard {
         let dir = directory.to_path_buf();
         tokio::task::spawn_blocking(move || {
             let mut results = Vec::new();
-            fn scan_dir_recursive(dir: &Path, results: &mut Vec<PathBuf>) -> std::io::Result<()> {
-                if dir.is_dir() {
-                    for entry in std::fs::read_dir(dir)? {
-                        let entry = entry?;
-                        let path = entry.path();
-                        if path.is_dir() {
-                            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                                if name == "target" || name == ".git" || name == "node_modules" {
-                                    continue;
-                                }
-                            }
-                            let _ = scan_dir_recursive(&path, results);
-                        } else if path.is_file() {
-                            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                                if name.starts_with(".env") || name.ends_with(".env") {
-                                    results.push(path);
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            }
             scan_dir_recursive(&dir, &mut results)?;
             Ok(results)
         })
@@ -539,6 +518,7 @@ impl envGuard {
         .map_err(|e| ControllerError::Session(crate::env_guard::errors::SessionError::Io(e)))
     }
 
+    #[must_use] 
     pub fn contains_secret_leak(
         &self,
         decrypted_creds: &[PlaintextCredential],
@@ -559,13 +539,13 @@ impl envGuard {
         command: &str,
     ) -> Result<u32, ControllerError> {
         let profile_opt = storage::get_profile(&self.pool, profile_id).await?;
-        let profile = match profile_opt {
-            Some(p) => p,
-            None => {
+        let Some(profile) = profile_opt else {
+
+
                 return Err(ControllerError::Storage(
                     crate::env_guard::errors::StorageError::ProfileNotFound(profile_id),
-                ))
-            }
+                ));
+
         };
 
         let decrypted = self.get_decrypted_credentials(profile_id).await?;
@@ -625,6 +605,34 @@ impl envGuard {
 
         Ok(pid)
     }
+}
+
+fn scan_dir_recursive(dir: &Path, results: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                    if name == "target" || name == ".git" || name == "node_modules" {
+                        continue;
+                    }
+                }
+                let _ = scan_dir_recursive(&path, results);
+            } else if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                    if name.starts_with(".env")
+                        || std::path::Path::new(name)
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("env"))
+                    {
+                        results.push(path);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
