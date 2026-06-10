@@ -620,14 +620,46 @@ fn get_keyring_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new("envguard_vault", "master_password").map_err(|e| e.to_string())
 }
 
+#[cfg(windows)]
+fn get_dpapi_path() -> Result<std::path::PathBuf, String> {
+    let base_dir = dirs::data_dir().ok_or("Cannot determine data directory")?;
+    Ok(base_dir.join("EnvGuard").join("vault.dpapi"))
+}
+
 #[tauri::command]
 pub async fn save_password_to_keychain(password: String) -> Result<(), String> {
     let entry = get_keyring_entry()?;
-    entry.set_password(&password).map_err(|e| e.to_string())
+    entry.set_password(&password).map_err(|e| e.to_string())?;
+
+    #[cfg(windows)]
+    {
+        let dpapi_path = get_dpapi_path()?;
+        if let Some(parent) = dpapi_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let encrypted = env_guard_core::env_guard::crypto::encrypt_dpapi(password.as_bytes())?;
+        std::fs::write(dpapi_path, encrypted).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn get_password_from_keychain() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        if let Ok(dpapi_path) = get_dpapi_path() {
+            if dpapi_path.exists() {
+                if let Ok(encrypted) = std::fs::read(&dpapi_path) {
+                    if let Ok(decrypted) = env_guard_core::env_guard::crypto::decrypt_dpapi(&encrypted) {
+                        if let Ok(s) = String::from_utf8(decrypted) {
+                            return Ok(s);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let entry = get_keyring_entry()?;
     entry.get_password().map_err(|e| e.to_string())
 }
@@ -635,7 +667,17 @@ pub async fn get_password_from_keychain() -> Result<String, String> {
 #[tauri::command]
 pub async fn delete_password_from_keychain() -> Result<(), String> {
     let entry = get_keyring_entry()?;
-    entry.delete_password().map_err(|e| e.to_string())
+    let _ = entry.delete_password();
+
+    #[cfg(windows)]
+    {
+        if let Ok(dpapi_path) = get_dpapi_path() {
+            if dpapi_path.exists() {
+                let _ = std::fs::remove_file(dpapi_path);
+            }
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
